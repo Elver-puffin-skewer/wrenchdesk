@@ -79,6 +79,7 @@ try {
         @{ Path = '/schedule';                Name = 'Schedule' }
         @{ Path = '/money';                   Name = 'Money' }
         @{ Path = '/settings';                Name = 'Settings' }
+        @{ Path = '/help';                    Name = 'Help' }
         @{ Path = '/app.css';                 Name = 'Stylesheet (embedded)' }
         @{ Path = '/favicon.ico';             Name = 'Icon (embedded)' }
         @{ Path = '/_framework/blazor.web.js'; Name = 'Blazor script (framework)' }

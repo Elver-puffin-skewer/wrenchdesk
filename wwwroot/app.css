@@ -598,3 +598,82 @@ select { cursor: pointer; }
     font-size: .9rem;
 }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 1rem; top: .8rem; }
+
+/* ---------- Help ---------- */
+
+.help-search { margin-bottom: 1.25rem; }
+
+.help-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+
+.help-toc { position: sticky; top: 4.5rem; }
+.help-toc-title {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    padding: 0 .6rem .4rem;
+}
+.help-toc a {
+    display: block;
+    padding: .4rem .6rem;
+    border-radius: 6px;
+    color: var(--ink-2);
+    font-size: .88rem;
+    line-height: 1.35;
+}
+.help-toc a:hover { background: var(--cream); color: var(--navy); text-decoration: none; }
+
+.help-body section { scroll-margin-top: 4.5rem; }
+.help-body h3 {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line-2);
+    scroll-margin-top: 4.5rem;
+}
+.help-body p { line-height: 1.6; }
+.help-body ul, .help-body ol { line-height: 1.6; padding-left: 1.3rem; }
+.help-body li { margin-bottom: .4rem; }
+.help-body code, .help-body .mono { background: var(--line-2); padding: .1rem .3rem; border-radius: 4px; font-size: .9em; }
+
+.help-steps li { margin-bottom: .7rem; }
+
+/* Numbered walkthrough of the shop's actual workflow. */
+.help-flow { display: flex; flex-direction: column; gap: .25rem; margin-bottom: 1.25rem; }
+.help-flow-step { display: flex; gap: .9rem; padding: .85rem 0; border-bottom: 1px solid var(--line-2); }
+.help-flow-step:last-child { border-bottom: 0; }
+.help-flow-step .n {
+    flex: 0 0 auto;
+    width: 1.9rem; height: 1.9rem;
+    display: grid; place-items: center;
+    background: var(--navy);
+    color: #fff;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: .9rem;
+}
+.help-flow-step p { margin: .2rem 0 0; color: var(--ink-2); }
+
+.help-urls {
+    background: var(--navy);
+    color: #fff;
+    border-radius: var(--radius);
+    padding: .8rem 1rem;
+    margin-bottom: .75rem;
+}
+.help-urls .mono { background: transparent; color: #fff; font-size: 1.05rem; display: block; padding: .15rem 0; }
+
+.help-faq dt { font-weight: 650; color: var(--navy); margin-top: 1rem; }
+.help-faq dt:first-child { margin-top: 0; }
+.help-faq dd { margin: .3rem 0 0; color: var(--ink-2); line-height: 1.6; }
+
+@media (max-width: 900px) {
+    .help-layout { grid-template-columns: 1fr; }
+    .help-toc { position: static; margin-bottom: 1rem; }
+    .help-toc a { display: inline-block; }
+}
+
+@media print {
+    .help-layout { display: block; }
+    .help-body section { break-inside: avoid; }
+}

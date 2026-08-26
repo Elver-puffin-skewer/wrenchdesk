@@ -36,6 +36,10 @@ Calendar sync**: write a stop up here and it appears on the shop calendar; move 
 phone and it changes here. Every stop also has a **Directions** link that opens Google Maps for
 whoever is driving. See [Google Calendar sync](#google-calendar-sync).
 
+**Help** — a full guide lives inside the app under **Help**, written for the counter rather than for
+a developer. It works offline and shows this shop's actual settings — where the records are, whether
+backups are on, the exact URL to type into a phone — instead of generic instructions.
+
 **Backups** — the entire system is one SQLite file. Press **Back up now** to write a copy straight to
 a USB stick or external drive, or switch on a daily/weekly schedule that does it unattended.
 Scheduled backups are **off until you turn them on**. See [Backups](#backups) below.

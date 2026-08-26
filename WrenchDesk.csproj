@@ -12,7 +12,7 @@
     <Product>WrenchDesk</Product>
     <Company>Walt's Small Engines</Company>
     <Description>Shop management for Walt's Small Engines</Description>
-    <Version>1.2.0</Version>
+    <Version>1.4.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

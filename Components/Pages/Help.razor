@@ -1,0 +1,630 @@
+@page "/help"
+@inject SettingsStore Settings
+@inject Db Database
+@inject BackupService Backups
+@inject GoogleAuthService Auth
+@inject IConfiguration Config
+
+<PageTitle>Help — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Help</h1>
+        <p class="sub">
+            Everything below works offline — it lives inside the program, not on a website.
+        </p>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+        <button class="btn" onclick="window.print()">🖨 Print this</button>
+    </div>
+</div>
+
+<div class="help-search no-print">
+    <div class="search-box" style="max-width:100%">
+        <span class="ico">🔍</span>
+        <input type="search" placeholder="Search help — try &ldquo;backup&rdquo;, &ldquo;phone&rdquo;, &ldquo;refund&rdquo;…"
+               value="@_query" @oninput="OnSearch" />
+    </div>
+    @if (!string.IsNullOrWhiteSpace(_query))
+    {
+        <div class="muted small" style="margin-top:.4rem">
+            @VisibleCount of @Topics.Count topics match.
+            <button class="btn btn-ghost btn-sm" @onclick="ClearSearch">Show all</button>
+        </div>
+    }
+</div>
+
+<div class="help-layout">
+    <nav class="help-toc no-print">
+        <div class="help-toc-title">On this page</div>
+        @foreach (var topic in Topics.Where(Matches))
+        {
+            <a href="@($"#{topic.Id}")">@topic.Icon @topic.Title</a>
+        }
+        <div class="help-toc-title" style="margin-top:1rem">This shop</div>
+        <a href="#status">📋 Your setup</a>
+    </nav>
+
+    <div class="help-body">
+
+        @if (VisibleCount == 0)
+        {
+            <div class="card">
+                <div class="empty">
+                    <div class="big">🔍</div>
+                    <div>Nothing in the help matches &ldquo;@_query&rdquo;.</div>
+                    <div class="btn-row" style="margin-top:1rem;justify-content:center">
+                        <button class="btn btn-sm" @onclick="ClearSearch">Show everything</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (Matches(Get("first-time")))
+        {
+            <section id="first-time" class="card">
+                <div class="card-head"><h2>🚀 Setting up for the first time</h2></div>
+                <div class="card-body">
+                    <p>Do these once, in this order. It takes about ten minutes.</p>
+                    <ol class="help-steps">
+                        <li>
+                            <strong>Fill in your shop details.</strong> Go to <a href="/settings">Settings</a> and
+                            put in the shop name, address and phone. These print at the top of every estimate
+                            and invoice, so customers see them.
+                        </li>
+                        <li>
+                            <strong>Set your labor rate.</strong> Still in Settings. Every labor line you add to
+                            a ticket starts at this rate, so you only have to type the hours.
+                        </li>
+                        <li>
+                            <strong>Set your sales tax.</strong> If you don't charge tax, put <code>0</code>.
+                            The rate is saved onto each ticket as you create it, so changing it later never
+                            rewrites old paperwork.
+                        </li>
+                        <li>
+                            <strong>Turn on backups.</strong> This is the important one — see
+                            <a href="#backups">Backups</a> below. Nothing is saved on a schedule until you switch
+                            it on.
+                        </li>
+                        <li>
+                            <strong>Add your first customer</strong> and write up a ticket. See
+                            <a href="#daily">A job, start to finish</a>.
+                        </li>
+                    </ol>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("daily")))
+        {
+            <section id="daily" class="card">
+                <div class="card-head"><h2>🔧 A job, start to finish</h2></div>
+                <div class="card-body">
+                    <p class="muted">The whole shop workflow is five things. Everything else is detail.</p>
+
+                    <div class="help-flow">
+                        <div class="help-flow-step">
+                            <div class="n">1</div>
+                            <div>
+                                <strong>A machine comes in</strong>
+                                <p>
+                                    Press <strong>+ New Ticket</strong> (top right, on every screen). Search for the
+                                    customer by name or phone — if they're new, there's a link to add them right
+                                    there. Pick which machine it is, type what they said is wrong in their own
+                                    words, and create it.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="help-flow-step">
+                            <div class="n">2</div>
+                            <div>
+                                <strong>You quote it</strong>
+                                <p>
+                                    On the ticket, add <strong>+ Labor</strong> and <strong>+ Part</strong> lines.
+                                    Labor starts at your shop rate, so usually you just type the hours. Then press
+                                    <strong>Print</strong> — while the ticket is still an <em>Estimate</em>, it prints
+                                    as an estimate with a signature line for them to approve.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="help-flow-step">
+                            <div class="n">3</div>
+                            <div>
+                                <strong>They say go ahead</strong>
+                                <p>
+                                    Move the ticket to <strong>Approved</strong>, then <strong>In Progress</strong> as
+                                    you work on it. Waiting on a part? Move it to
+                                    <strong>Waiting on Parts</strong> so it's obvious on the dashboard why it's
+                                    sitting there. Add parts to the ticket as you use them.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="help-flow-step">
+                            <div class="n">4</div>
+                            <div>
+                                <strong>It's finished</strong>
+                                <p>
+                                    Write what you actually did in <strong>What we found / did</strong> — that's what
+                                    prints on the invoice, and it's what you'll want to read next time that machine
+                                    comes back. Move it to <strong>Ready for Pickup</strong>.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="help-flow-step">
+                            <div class="n">5</div>
+                            <div>
+                                <strong>They pay and collect</strong>
+                                <p>
+                                    Press <strong>+ Payment</strong>. It fills in the full balance already, so most of
+                                    the time it's two clicks. Then move the ticket to <strong>Closed</strong>. The
+                                    money shows up on today's total straight away.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info" style="margin-bottom:0">
+                        <strong>Why one ticket the whole way through?</strong> The estimate and the finished repair
+                        stay the same record, so a year later the customer's history reads as one story instead of
+                        two disconnected pieces of paper.
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("customers")))
+        {
+            <section id="customers" class="card">
+                <div class="card-head"><h2>👤 Customers and their machines</h2></div>
+                <div class="card-body">
+                    <p>
+                        <strong>Finding someone fast.</strong> The search box at the top of every screen searches
+                        names, business names, phone numbers and addresses. A partial phone number works — typing
+                        <code>0142</code> finds them. Press Enter to jump to the results.
+                    </p>
+                    <p>
+                        <strong>Their machines.</strong> On a customer's page you can add each machine they own,
+                        with make, model, serial, and the engine's own make and model. Worth filling in the engine
+                        details — that's usually what you need when ordering parts.
+                    </p>
+                    <p>
+                        <strong>Their history.</strong> The customer page shows every estimate and repair, what
+                        they were charged, what they've paid, and how many times each machine has been in. Handy
+                        when someone says "you fixed this last spring".
+                    </p>
+                    <p style="margin-bottom:0">
+                        <strong>Someone stops coming in?</strong> Archive them rather than deleting. They vanish
+                        from the list but all their history stays. WrenchDesk refuses to delete a customer who has
+                        tickets, on purpose — it's too easy to wipe out years of records by accident.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("money")))
+        {
+            <section id="money" class="card">
+                <div class="card-head"><h2>💵 Money</h2></div>
+                <div class="card-body">
+                    <p>
+                        <strong>&ldquo;Money in today&rdquo; means cash actually received today</strong> — not what
+                        you invoiced. That's the number you'd count in the till, so that's what the dashboard shows.
+                    </p>
+                    <p>
+                        <strong>Taking a payment.</strong> Usually from the ticket itself (<strong>+ Payment</strong>),
+                        which links it to that job. For a walk-in sale with no ticket — sharpening a blade, selling a
+                        quart of oil — use <strong>+ Record payment</strong> on the <a href="/money">Money</a> page
+                        and leave the customer blank.
+                    </p>
+                    <p>
+                        <strong>Part payments.</strong> Take a deposit toward parts by entering less than the full
+                        amount. The ticket shows the balance still owed, and it appears in <strong>Still owed</strong>
+                        on the dashboard.
+                    </p>
+                    <p>
+                        <strong>Made a mistake?</strong> On the Money page, press <strong>Edit</strong> on any payment
+                        to fix the amount or date, or delete it. There's no separate refund — just correct the record.
+                    </p>
+                    <p style="margin-bottom:0">
+                        <strong>For the bookkeeper.</strong> Set a date range on the Money page and press
+                        <strong>Export CSV</strong>. It opens in Excel.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("schedule")))
+        {
+            <section id="schedule" class="card">
+                <div class="card-head"><h2>📅 Pickups, deliveries and Google Calendar</h2></div>
+                <div class="card-body">
+                    <p>
+                        Schedule a stop from the ticket (<strong>📅 Schedule</strong>) or from the
+                        <a href="/schedule">Schedule</a> page. The customer's address fills in automatically, and
+                        every stop gets a <strong>Directions</strong> link that opens Google Maps for whoever is
+                        driving the truck.
+                    </p>
+
+                    <h3 id="google">Google Calendar</h3>
+                    <p>
+                        Once connected, changes go <strong>both ways</strong>: write a pickup up here and it appears
+                        on the shop calendar; move or cancel it from your phone and the schedule here follows.
+                    </p>
+                    <p>
+                        <strong>Use a calendar just for shop work.</strong> Everything on the synced calendar is
+                        treated as shop jobs, so pointing it at a personal calendar would pull in dentist
+                        appointments and birthdays. Settings has a button that makes a clean one in a single click.
+                    </p>
+                    <p>
+                        Connecting it needs a free Google account setup that takes about ten minutes — Google
+                        requires every business to use its own credentials. The step-by-step is in
+                        <a href="https://github.com/Elver-puffin-skewer/wrenchdesk#google-calendar-sync" target="_blank">the
+                        setup guide</a>, and <a href="/settings">Settings</a> shows the exact values to paste.
+                    </p>
+                    <div class="alert alert-warn" style="margin-bottom:0">
+                        <strong>One thing that catches people out:</strong> in the Google Cloud console, set the
+                        OAuth consent screen to <em>In production</em>. If it's left on <em>Testing</em>, Google
+                        cuts the connection every 7 days and syncing quietly stops.
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("backups")))
+        {
+            <section id="backups" class="card">
+                <div class="card-head"><h2>💾 Backups — read this one</h2></div>
+                <div class="card-body">
+                    <div class="alert @(_autoBackup ? "alert-ok" : "alert-danger")">
+                        @if (_autoBackup)
+                        {
+                            <span><strong>Automatic backups are on.</strong> @_backupSchedule, saving to <span class="mono">@_backupDestination</span>.</span>
+                        }
+                        else
+                        {
+                            <span>
+                                <strong>Automatic backups are off right now.</strong> Everything the shop has is in
+                                one file on this PC. If this computer's drive fails, it's all gone.
+                                <a href="/settings">Turn backups on in Settings</a>.
+                            </span>
+                        }
+                    </div>
+
+                    <p>
+                        <strong>The quick version:</strong> plug a USB stick into the shop PC, leave it in, and set a
+                        daily backup pointed at it. That covers you for both a mistake and a dead hard drive.
+                    </p>
+                    <p>
+                        <strong>Right now, by hand.</strong> <a href="/settings">Settings</a> →
+                        <strong>Back up now</strong> → pick the drive → <strong>Back up to this drive</strong>.
+                        Backups made this way are never deleted automatically.
+                    </p>
+                    <p>
+                        <strong>On a schedule.</strong> Settings → <strong>Automatic backups</strong>. Pick a time
+                        the PC is normally switched on — after closing, but before it gets turned off. If the PC was
+                        off when a backup was due, it runs at the next opportunity rather than skipping it.
+                    </p>
+
+                    <h3>Getting your records back</h3>
+                    <p>
+                        Every backup file is a complete, working copy — there is nothing else to restore. If the
+                        worst happens:
+                    </p>
+                    <ol class="help-steps">
+                        <li>Close WrenchDesk (close the black window).</li>
+                        <li>Find your most recent backup file — they're named like <span class="mono">wrenchdesk-2026-08-25-180000.db</span>.</li>
+                        <li>Rename it to exactly <span class="mono">wrenchdesk.db</span>.</li>
+                        <li>Put it in <span class="mono">@Database.DataDirectory</span>, replacing the file already there.</li>
+                        <li>Start WrenchDesk again. Everything is back as of that backup.</li>
+                    </ol>
+                    <p style="margin-bottom:0" class="muted small">
+                        Moving to a new computer works the same way: install WrenchDesk there, then copy your
+                        <span class="mono">wrenchdesk.db</span> into its data folder.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("phone")))
+        {
+            <section id="phone" class="card">
+                <div class="card-head"><h2>📱 Using it on a phone or tablet</h2></div>
+                <div class="card-body">
+                    <p>
+                        Any phone, tablet or laptop on the same wifi can use WrenchDesk — handy for writing up an
+                        estimate at the bench, or checking a delivery address without walking back to the counter.
+                        The screen layout adapts automatically.
+                    </p>
+
+                    @if (_lanUrls.Count > 0)
+                    {
+                        <p><strong>Type this into the browser on your phone:</strong></p>
+                        <div class="help-urls">
+                            @foreach (var url in _lanUrls)
+                            {
+                                <div class="mono">@url</div>
+                            }
+                        </div>
+                        @if (_lanUrls.Count > 1)
+                        {
+                            <p class="muted small">
+                                More than one is listed because this PC has several network connections. Try the
+                                first one; it's the most likely to be your wifi.
+                            </p>
+                        }
+                    }
+                    else
+                    {
+                        <div class="alert alert-warn">
+                            No network address found, so phone access isn't available right now. Either this PC
+                            isn't on the network, or <span class="mono">AllowLanAccess</span> has been turned off.
+                        </div>
+                    }
+
+                    <p class="muted small" style="margin-bottom:0">
+                        Two things to know: the shop PC has to be switched on and running WrenchDesk, and the first
+                        time you run it Windows may ask whether to allow it on the network — say yes to
+                        <strong>Private networks</strong> or the phone URL won't work.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("printing")))
+        {
+            <section id="printing" class="card">
+                <div class="card-head"><h2>🖨 Printing estimates and invoices</h2></div>
+                <div class="card-body">
+                    <p>
+                        Open a ticket and press <strong>Print</strong>. What comes out depends on where the ticket is:
+                    </p>
+                    <ul>
+                        <li>Still an <strong>Estimate</strong> → prints as an <em>Estimate</em>, with your terms and a signature line.</li>
+                        <li>Anything past that → prints as an <em>Invoice</em>, and says "Paid in full" once it's settled.</li>
+                    </ul>
+                    <p style="margin-bottom:0">
+                        Your shop name, address and phone come from <a href="/settings">Settings</a>. Internal notes
+                        on a ticket are never printed — that's the point of them.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("trouble")))
+        {
+            <section id="trouble" class="card">
+                <div class="card-head"><h2>🩺 When something's wrong</h2></div>
+                <div class="card-body">
+                    <dl class="help-faq">
+                        <dt>The page won't load / the browser says it can't connect</dt>
+                        <dd>
+                            WrenchDesk has stopped. Double-click the desktop icon to start it again. It has to be
+                            running for the page to work — the black window is the program itself.
+                        </dd>
+
+                        <dt>I closed the black window and everything disappeared</dt>
+                        <dd>
+                            That window <em>is</em> WrenchDesk. Closing it stops the program. Nothing is lost —
+                            start it from the desktop icon and everything is exactly as you left it.
+                        </dd>
+
+                        <dt>Windows says the publisher is unknown</dt>
+                        <dd>
+                            Expected. The program isn't code-signed (the certificate costs several hundred dollars
+                            a year). Choose <strong>More info</strong> then <strong>Run anyway</strong>.
+                        </dd>
+
+                        <dt>How do I put it on the taskbar?</dt>
+                        <dd>
+                            Windows doesn't allow a program to pin itself, so it's one right-click:
+                            right-click the desktop icon → <strong>Show more options</strong> →
+                            <strong>Pin to taskbar</strong>.
+                        </dd>
+
+                        <dt>I deleted something by mistake</dt>
+                        <dd>
+                            There's no undo. Restore from your most recent backup —
+                            see <a href="#backups">Getting your records back</a>. This is the reason to have
+                            backups switched on.
+                        </dd>
+
+                        <dt>The totals look wrong</dt>
+                        <dd>
+                            Check the <strong>Tax</strong> checkbox on each line of the ticket. Labor is usually
+                            untaxed and parts usually taxed, but it varies — each line is set individually, and the
+                            sales tax rate is shown on the ticket itself.
+                        </dd>
+
+                        <dt>Google Calendar stopped syncing</dt>
+                        <dd>
+                            Almost always the 7-day expiry — see <a href="#google">Google Calendar</a> above.
+                            <a href="/settings">Settings</a> shows the last sync and any error.
+                        </dd>
+
+                        <dt>Something else is broken</dt>
+                        <dd>
+                            Note what you were doing and check the black window for a message. Problems can be
+                            reported at
+                            <a href="https://github.com/Elver-puffin-skewer/wrenchdesk/issues" target="_blank">the project page</a>.
+                        </dd>
+                    </dl>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("updating")))
+        {
+            <section id="updating" class="card">
+                <div class="card-head"><h2>⬆ Updating and removing</h2></div>
+                <div class="card-body">
+                    <p>
+                        <strong>To update:</strong> download the newest <span class="mono">WrenchDesk.exe</span> from
+                        <a href="https://github.com/Elver-puffin-skewer/wrenchdesk/releases" target="_blank">the releases page</a>
+                        and run it. It replaces the installed copy. <strong>Your records are never touched by an
+                        update</strong> — they live in a separate folder.
+                    </p>
+                    <p style="margin-bottom:0">
+                        <strong>To remove it:</strong> run <span class="mono">WrenchDesk.exe --uninstall</span>. That
+                        takes away the program and the shortcuts and leaves your shop data alone, so reinstalling
+                        picks up exactly where you left off.
+                    </p>
+                </div>
+            </section>
+        }
+
+        <section id="status" class="card">
+            <div class="card-head"><h2>📋 Your setup</h2></div>
+            <div class="card-body">
+                <p class="muted small">
+                    The actual settings on this PC, in case you need them or someone asks.
+                </p>
+                <dl class="kv">
+                    <dt>Shop</dt>
+                    <dd>@_shopName</dd>
+
+                    <dt>Version</dt>
+                    <dd>@_version</dd>
+
+                    <dt>Your records</dt>
+                    <dd class="mono small">@Database.DatabasePath</dd>
+
+                    <dt>Backups folder</dt>
+                    <dd class="mono small">@Backups.ScheduledDestination</dd>
+
+                    <dt>Automatic backups</dt>
+                    <dd>
+                        @if (_autoBackup)
+                        {
+                            <span class="money-pos">On</span> <span>— @_backupSchedule</span>
+                        }
+                        else
+                        {
+                            <span class="money-owed">Off</span> <span>— <a href="/settings">turn them on</a></span>
+                        }
+                    </dd>
+
+                    <dt>Last backup</dt>
+                    <dd>@(_lastBackup?.ToString("MMM d, yyyy h:mm tt") ?? "Never")</dd>
+
+                    <dt>Google Calendar</dt>
+                    <dd>
+                        @if (!Auth.IsConnected)
+                        {
+                            <span class="muted">Not connected</span>
+                        }
+                        else if (_googleSyncing)
+                        {
+                            <span class="money-pos">Syncing</span>
+                        }
+                        else
+                        {
+                            <span>Connected, sync paused</span>
+                        }
+                    </dd>
+
+                    <dt>On this PC</dt>
+                    <dd class="mono small">http://localhost:@_port</dd>
+
+                    @if (_lanUrls.Count > 0)
+                    {
+                        <dt>Phone / tablet</dt>
+                        <dd class="mono small">@_lanUrls[0]</dd>
+                    }
+                </dl>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+@code {
+    private record Topic(string Id, string Icon, string Title, string Keywords);
+
+    /// <summary>
+    /// Drives both the contents list and the search. Keywords carry the words someone would
+    /// actually type — "refund", "lost", "wifi" — rather than the words the headings happen to use.
+    /// </summary>
+    private static readonly List<Topic> Topics = new()
+    {
+        new("first-time", "🚀", "Setting up for the first time",
+            "setup start begin new install first shop details labor rate tax"),
+        new("daily", "🔧", "A job, start to finish",
+            "ticket estimate quote repair job workflow approve invoice payment customer machine bench parts labor"),
+        new("customers", "👤", "Customers and their machines",
+            "customer search find phone number equipment machine serial engine history archive delete"),
+        new("money", "💵", "Money",
+            "money payment cash check card till takings weekly daily refund mistake deposit balance owed csv export bookkeeper walk-in"),
+        new("schedule", "📅", "Pickups, deliveries and Google Calendar",
+            "schedule pickup delivery calendar google sync appointment directions maps address driving"),
+        new("backups", "💾", "Backups",
+            "backup restore lost data usb drive save copy crash recover deleted broken computer died new pc move"),
+        new("phone", "📱", "Using it on a phone or tablet",
+            "phone tablet ipad wifi network address remote bench counter lan"),
+        new("printing", "🖨", "Printing estimates and invoices",
+            "print estimate invoice paper signature receipt"),
+        new("trouble", "🩺", "When something's wrong",
+            "problem broken error wont start closed window unknown publisher taskbar pin totals wrong undo help stuck"),
+        new("updating", "⬆", "Updating and removing",
+            "update upgrade new version uninstall remove delete newest download")
+    };
+
+    private string _query = "";
+
+    private string _shopName = "";
+    private string _version = "";
+    private int _port = 5173;
+    private List<string> _lanUrls = new();
+    private bool _autoBackup;
+    private string _backupSchedule = "";
+    private string _backupDestination = "";
+    private DateTime? _lastBackup;
+    private bool _googleSyncing;
+
+    private int VisibleCount => Topics.Count(Matches);
+
+    private static Topic Get(string id) => Topics.First(t => t.Id == id);
+
+    private bool Matches(Topic topic)
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return true;
+
+        var needle = _query.Trim();
+        return topic.Title.Contains(needle, StringComparison.OrdinalIgnoreCase)
+            || topic.Keywords.Contains(needle, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnSearch(ChangeEventArgs e) => _query = e.Value?.ToString() ?? "";
+
+    private void ClearSearch() => _query = "";
+
+    protected override void OnInitialized()
+    {
+        _shopName = Settings.Get(SettingsStore.ShopName);
+
+        _version = typeof(Help).Assembly.GetName().Version is { } v
+            ? $"{v.Major}.{v.Minor}.{v.Build}"
+            : "unknown";
+
+        _port = Config.GetValue("WrenchDesk:Port", 5173);
+
+        if (Config.GetValue("WrenchDesk:AllowLanAccess", true))
+            _lanUrls = NetworkInfo.LanUrls(_port);
+
+        _autoBackup = Settings.GetBool(SettingsStore.BackupAutoEnabled);
+        _backupSchedule = BackupSchedule.Describe(
+            Settings.Get(SettingsStore.BackupFrequency),
+            Settings.GetTime(SettingsStore.BackupTimeOfDay, new TimeOnly(18, 0)),
+            Settings.GetDay(SettingsStore.BackupDayOfWeek, DayOfWeek.Friday));
+        _backupDestination = Backups.ScheduledDestination;
+        _lastBackup = Settings.GetTimestamp(SettingsStore.BackupLastRun);
+
+        _googleSyncing = Auth.IsConnected
+            && Settings.GetBool(SettingsStore.GoogleSyncEnabled)
+            && !Settings.GetBool(SettingsStore.GoogleNeedsReconnect);
+    }
+}

@@ -1,7 +1,4 @@
 using System.Diagnostics;
-using System.Net;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
 using System.Text;
 using WrenchDesk.Components;
 using WrenchDesk.Data;
@@ -153,8 +150,8 @@ lifetime.ApplicationStarted.Register(() =>
 
     if (lanEnabled)
     {
-        foreach (var ip in LocalAddresses())
-            Console.WriteLine($"  Phone / tablet:  http://{ip}:{port}");
+        foreach (var url in NetworkInfo.LanUrls(port))
+            Console.WriteLine($"  Phone / tablet:  {url}");
     }
 
     Console.WriteLine($"  Data file:       {db.DatabasePath}");
@@ -193,20 +190,3 @@ static IResult EmbeddedAsset(string name, string contentType)
 static DateTime? ParseDate(string? value) =>
     DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
         System.Globalization.DateTimeStyles.None, out var d) ? d : null;
-
-/// <summary>LAN addresses this PC can be reached at, so the tablet URL can be printed on startup.</summary>
-static IEnumerable<string> LocalAddresses()
-{
-    foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-    {
-        if (nic.OperationalStatus != OperationalStatus.Up) continue;
-        if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-
-        foreach (var addr in nic.GetIPProperties().UnicastAddresses)
-        {
-            if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-            if (IPAddress.IsLoopback(addr.Address)) continue;
-            yield return addr.Address.ToString();
-        }
-    }
-}
