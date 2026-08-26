@@ -56,6 +56,11 @@ if ($LASTEXITCODE -ne 0) {
 # The published folder carries a debug symbols file that the shop does not need.
 Get-ChildItem $OutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
 
+# Ship the installer alongside the program, so the folder handed to the shop is self-contained.
+foreach ($file in @('install.ps1', 'uninstall.ps1', 'Install WrenchDesk.cmd', 'Uninstall WrenchDesk.cmd')) {
+    Copy-Item (Join-Path $scriptDir $file) -Destination $OutputDir -Force
+}
+
 $exe = Join-Path $OutputDir 'WrenchDesk.exe'
 $sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 
@@ -63,5 +68,6 @@ Write-Host ''
 Write-Host '  Done.' -ForegroundColor Green
 Write-Host "  Program:  $exe  ($sizeMb MB)"
 Write-Host ''
-Write-Host '  Copy the whole output folder to the shop PC and double-click WrenchDesk.exe.'
+Write-Host '  Copy the whole output folder to the shop PC, then double-click'
+Write-Host '  "Install WrenchDesk.cmd" to set up the desktop and Start menu shortcuts.'
 Write-Host ''

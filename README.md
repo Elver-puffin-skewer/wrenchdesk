@@ -45,7 +45,37 @@ Scheduled backups are **off until you turn them on**. See [Backups](#backups) be
 ## Running it on the shop PC
 
 Grab the latest build (or produce one with `build\publish.ps1` — see *Building* below), copy the
-folder anywhere on the PC, and double-click **WrenchDesk.exe**.
+folder to the shop PC, and double-click **`Install WrenchDesk.cmd`**.
+
+That copies the program somewhere permanent and creates:
+
+- a **desktop icon** with the shop badge,
+- a **Start menu entry**, so it turns up when you press Start and type "wrench",
+- optionally, a **start-with-Windows** entry — it asks.
+
+It installs under your own user account, so there's no administrator prompt, and it never touches
+your shop data. Reinstalling over the top to update is safe: customers, tickets and payments live in
+`Documents\WrenchDesk`, not in the program folder.
+
+**`Uninstall WrenchDesk.cmd`** removes the shortcuts and the program, and again leaves your data
+alone.
+
+### Pinning it to the taskbar
+
+Windows does not let a program pin itself to the taskbar — Microsoft closed that off in Windows 10
+and tightened it further in Windows 11, where even *Pin to Start* is refused to installers. The
+installer tries anyway (it still works on older machines) and tells you if it couldn't.
+
+So this one step is manual, and takes a single right-click:
+
+> Right-click the desktop icon → **Show more options** → **Pin to taskbar**
+
+Or press Start, type *WrenchDesk*, right-click the result and choose **Pin to taskbar**. Dragging
+the desktop icon onto the taskbar works too.
+
+### Running it without installing
+
+You can still just double-click **WrenchDesk.exe** in the folder. Nothing is set up, but it runs.
 
 A console window opens and prints something like:
 
@@ -73,8 +103,8 @@ itself.)
 
 ### Starting it automatically with Windows
 
-Press `Win+R`, type `shell:startup`, press Enter, and drop a shortcut to `WrenchDesk.exe` in the
-folder that opens. It will start with the PC from then on.
+The installer offers this. To change your mind later, press `Win+R`, type `shell:startup`, press
+Enter, and add or remove the WrenchDesk shortcut in the folder that opens.
 
 ---
 
@@ -336,7 +366,8 @@ cd wrenchdesk
 
 dotnet run                      # development, on http://localhost:5173
 dotnet test                     # run the test suite
-powershell build\publish.ps1    # produce build\output\WrenchDesk.exe for the shop
+powershell build\publish.ps1    # produce build\output\ ready to hand to the shop
+python build\make-icon.py       # regenerate the app icon (needs Pillow)
 ```
 
 ### How it's put together
@@ -355,7 +386,7 @@ Services/        backups and scheduling
 Services/Google/ calendar sync — contracts, mapping, engine, OAuth
 Components/      Blazor pages and layout
 tests/           xunit tests against a real migrated SQLite file
-build/           publish script
+build/           publish script, installer, icon generator
 ```
 
 **Money is stored as whole cents** (`long`), never as a floating-point number. Quantities are stored

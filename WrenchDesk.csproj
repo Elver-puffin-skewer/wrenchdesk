@@ -4,6 +4,15 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Gives the .exe itself the shop badge, which is what desktop and taskbar shortcuts show. -->
+    <ApplicationIcon>wwwroot\favicon.ico</ApplicationIcon>
+
+    <AssemblyTitle>WrenchDesk</AssemblyTitle>
+    <Product>WrenchDesk</Product>
+    <Company>Walt's Small Engines</Company>
+    <Description>Shop management for Walt's Small Engines</Description>
+    <Version>1.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
