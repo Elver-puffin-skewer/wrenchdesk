@@ -42,6 +42,10 @@ jobs:
       - name: Publish single-file build
         run: powershell -ExecutionPolicy Bypass -File build/publish.ps1
 
+      - name: Smoke test the published program
+        shell: pwsh
+        run: ./build/smoke-test.ps1
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:

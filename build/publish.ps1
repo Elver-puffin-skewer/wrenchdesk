@@ -56,17 +56,32 @@ if ($LASTEXITCODE -ne 0) {
 # The published folder carries a debug symbols file that the shop does not need.
 Get-ChildItem $OutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
 
-# Everything left here is already compiled into the .exe: appsettings.json only repeats defaults
-# that live in code, and wwwroot is embedded as resources. Removing them is what makes the thing
-# handed to the shop a single file rather than a folder they have to keep together.
-foreach ($leftover in @('appsettings.json', 'appsettings.Development.json', 'web.config')) {
-    Remove-Item (Join-Path $OutputDir $leftover) -Force -ErrorAction SilentlyContinue
+# Everything removed here is already inside the .exe: appsettings.json only repeats defaults that
+# live in code, and wwwroot is embedded as resources and served from endpoints in Program.cs.
+# Dropping them is what makes the thing handed to the shop a single file rather than a folder
+# somebody has to keep together.
+#
+# The staticwebassets manifests describe wwwroot for the static-file middleware. Which of them the
+# SDK emits varies by patch version — 8.0.403 writes none, later ones write the endpoints manifest —
+# so match on the pattern rather than naming files, and let the smoke test below prove the result
+# still runs.
+$removable = @(
+    'appsettings*.json'
+    'web.config'
+    '*.pdb'
+    '*.staticwebassets.*.json'
+    '*.staticwebassets.runtime.json'
+)
+
+foreach ($pattern in $removable) {
+    Get-ChildItem $OutputDir -Filter $pattern -File -ErrorAction SilentlyContinue | Remove-Item -Force
 }
+
 Remove-Item (Join-Path $OutputDir 'wwwroot') -Recurse -Force -ErrorAction SilentlyContinue
 
-$stray = Get-ChildItem $OutputDir | Where-Object { $_.Name -ne 'WrenchDesk.exe' }
+$stray = Get-ChildItem $OutputDir -Recurse | Where-Object { $_.Name -ne 'WrenchDesk.exe' }
 if ($stray) {
-    Write-Warning "Publish left files beside the .exe, so it is no longer self-contained:"
+    Write-Warning 'Publish left files beside the .exe, so it is no longer a single file:'
     $stray | ForEach-Object { Write-Warning "  $($_.Name)" }
 }
 

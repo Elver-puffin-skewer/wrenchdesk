@@ -45,6 +45,12 @@ jobs:
           }
           Write-Host "OK - one file, $([math]::Round($files[0].Length/1MB,1)) MB"
 
+      # Counting files proves nothing sits beside the .exe; this proves the .exe still works
+      # without those files. Without it, embedding wwwroot could break silently.
+      - name: Smoke test the published program
+        shell: pwsh
+        run: ./build/smoke-test.ps1
+
       - name: Create the release
         uses: softprops/action-gh-release@v2
         with:
