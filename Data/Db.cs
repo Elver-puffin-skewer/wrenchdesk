@@ -235,6 +235,19 @@ public class SettingsStore
     public const string EstimateFooter = "estimate.footer";
     public const string WeekStartDay = "week.start_day";
 
+    // Backups are off until the shop turns them on and says where they should go.
+    public const string BackupAutoEnabled = "backup.auto_enabled";
+    public const string BackupFrequency = "backup.frequency";
+    public const string BackupTimeOfDay = "backup.time_of_day";
+    public const string BackupDayOfWeek = "backup.day_of_week";
+    public const string BackupKeepCount = "backup.keep_count";
+    public const string BackupDestination = "backup.destination";
+
+    // Written by the scheduler, not by the settings screen.
+    public const string BackupLastRun = "backup.last_run";
+    public const string BackupLastResult = "backup.last_result";
+    public const string BackupLastError = "backup.last_error";
+
     private static readonly Dictionary<string, string> Defaults = new()
     {
         [ShopName] = "My Repair Shop",
@@ -245,12 +258,38 @@ public class SettingsStore
         [LaborRateCents] = "6500",
         [TicketPrefix] = "WD",
         [EstimateFooter] = "Estimate valid for 30 days. Parts and labor may change if additional problems are found.",
-        [WeekStartDay] = "Monday"
+        [WeekStartDay] = "Monday",
+
+        // Off by default — nothing is written on a schedule until the shop asks for it.
+        [BackupAutoEnabled] = "false",
+        [BackupFrequency] = "Daily",
+        [BackupTimeOfDay] = "18:00",
+        [BackupDayOfWeek] = "Friday",
+        [BackupKeepCount] = "30",
+        [BackupDestination] = "",
+        [BackupLastRun] = "",
+        [BackupLastResult] = "",
+        [BackupLastError] = ""
     };
 
     /// <summary>Which day the shop's week rolls over on, used by the weekly takings report.</summary>
     public DayOfWeek GetWeekStart() =>
         Enum.TryParse<DayOfWeek>(Get(WeekStartDay), ignoreCase: true, out var d) ? d : DayOfWeek.Monday;
+
+    public bool GetBool(string key) =>
+        bool.TryParse(Get(key), out var b) && b;
+
+    /// <summary>Reads a stored HH:mm, falling back to the given default if it was never set or is malformed.</summary>
+    public TimeOnly GetTime(string key, TimeOnly fallback) =>
+        TimeOnly.TryParse(Get(key), System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : fallback;
+
+    public DayOfWeek GetDay(string key, DayOfWeek fallback) =>
+        Enum.TryParse<DayOfWeek>(Get(key), ignoreCase: true, out var d) ? d : fallback;
+
+    /// <summary>Local timestamp of a stored event, or null if it has never happened.</summary>
+    public DateTime? GetTimestamp(string key) =>
+        DateTime.TryParse(Get(key), System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dt) ? dt : null;
 
     public Dictionary<string, string> GetAll()
     {

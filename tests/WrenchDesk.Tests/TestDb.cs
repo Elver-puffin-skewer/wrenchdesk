@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using WrenchDesk.Data;
+using WrenchDesk.Services;
 
 namespace WrenchDesk.Tests;
 
@@ -17,6 +19,7 @@ public sealed class TestDb : IDisposable
     public TicketRepo Tickets { get; }
     public MoneyRepo Money { get; }
     public ScheduleRepo Schedule { get; }
+    public BackupService Backups { get; }
 
     public TestDb()
     {
@@ -35,6 +38,7 @@ public sealed class TestDb : IDisposable
         Tickets = new TicketRepo(Db, Settings);
         Money = new MoneyRepo(Db, Settings);
         Schedule = new ScheduleRepo(Db);
+        Backups = new BackupService(Db, Settings, NullLogger<BackupService>.Instance);
     }
 
     public long NewCustomer(string first = "Dale", string last = "Fenner") =>

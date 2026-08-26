@@ -89,60 +89,286 @@
 </div>
 
 <div class="card">
-    <div class="card-head">
-        <h2>Your data</h2>
-        <div class="spacer"></div>
-        <button class="btn btn-sm" @onclick="BackupNow">Back up now</button>
-    </div>
+    <div class="card-head"><h2>Your data</h2></div>
     <div class="card-body">
         <dl class="kv">
             <dt>Database file</dt>
             <dd class="mono small">@Database.DatabasePath</dd>
-            <dt>Backups folder</dt>
-            <dd class="mono small">@Database.BackupDirectory</dd>
             <dt>Size</dt>
             <dd>@FormatSize(_dbSize)</dd>
         </dl>
 
-        <div class="alert alert-info" style="margin-top:1rem">
-            Everything lives in that one database file. A backup runs automatically each day and the last
-            @BackupService.KeepCount are kept. To move the shop to a new PC, or to make an off-site copy,
-            just copy the file — that is the whole system.
+        <div class="alert alert-info" style="margin-top:1rem;margin-bottom:0">
+            Everything lives in that one file. Any backup below is a complete copy — to restore it,
+            or to move the shop to a new PC, rename it to <span class="mono">wrenchdesk.db</span> and
+            put it where the database file lives. There is nothing else to restore.
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Back up now</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" @onclick="RefreshDrives" disabled="@_busy">↻ Rescan drives</button>
+    </div>
+    <div class="card-body">
+        <p class="muted small" style="margin-bottom:1rem">
+            Writes a copy straight away — to a USB stick, an external drive, or any folder.
+            Drives are the ones plugged into the shop PC, even if you are looking at this on a tablet.
+        </p>
+
+        <div class="form-grid">
+            <div class="field">
+                <label>Drive or folder</label>
+                <select value="@_manualRoot" @onchange="OnManualRootChange">
+                    @foreach (var d in _drives)
+                    {
+                        <option value="@d.Root">@d.Display</option>
+                    }
+                    <option value="@CustomPathOption">Somewhere else (type a path)…</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>@(_manualRoot == CustomPathOption ? "Full folder path" : "Folder on that drive")</label>
+                <input type="text" @bind="_manualFolder"
+                       placeholder="@(_manualRoot == CustomPathOption ? "D:\\ShopBackups" : "WrenchDesk Backups")" />
+            </div>
         </div>
 
-        @if (_backups.Count > 0)
+        <div class="muted small" style="margin-bottom:1rem">
+            Will write to <span class="mono">@ManualDestination()</span>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-primary" @onclick="BackUpToChosen" disabled="@_busy">
+                @(_busy ? "Working…" : "Back up to this drive")
+            </button>
+            <button class="btn" @onclick="BackUpToDataFolder" disabled="@_busy">Back up to the data folder</button>
+        </div>
+
+        @if (_manualResult is not null)
         {
-            <h3 style="margin-top:1.25rem">Recent backups</h3>
-            <div class="table-wrap">
-                <table class="data">
-                    <thead>
-                        <tr><th>File</th><th>Taken</th><th class="num">Size</th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var b in _backups.Take(10))
-                        {
-                            <tr>
-                                <td class="mono small">@b.Name</td>
-                                <td class="small">@b.CreationTime.ToString("MMM d, yyyy h:mm tt")</td>
-                                <td class="num small">@FormatSize(b.Length)</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+            <div class="alert @(_manualResult.Success ? "alert-ok" : "alert-danger")" style="margin:1rem 0 0">
+                @if (_manualResult.Success)
+                {
+                    <div><strong>Backup saved.</strong> @DriveOption.FormatSize(_manualResult.Bytes)</div>
+                    <div class="mono small" style="margin-top:.25rem">@_manualResult.Path</div>
+                }
+                else
+                {
+                    <div><strong>Backup failed.</strong> @_manualResult.Error</div>
+                }
             </div>
         }
     </div>
 </div>
 
+<div class="card">
+    <div class="card-head">
+        <h2>Automatic backups</h2>
+        <div class="spacer"></div>
+        <span class="badge @(_autoEnabled ? "badge-ready" : "badge-closed")">@(_autoEnabled ? "On" : "Off")</span>
+    </div>
+    <div class="card-body">
+        <label class="check" style="margin-bottom:1rem">
+            <input type="checkbox" checked="@_autoEnabled" @onchange="OnAutoToggle" />
+            Run backups on a schedule
+        </label>
+
+        @if (!_autoEnabled)
+        {
+            <div class="alert alert-warn" style="margin-bottom:0">
+                Automatic backups are off, so nothing is being saved on a schedule. If this PC's drive
+                fails, the shop loses everything since the last time someone pressed
+                <em>Back up now</em>. Consider turning this on with a USB drive as the destination.
+            </div>
+        }
+        else
+        {
+            <div class="form-grid">
+                <div class="field">
+                    <label>How often</label>
+                    <select @bind="_frequency" @bind:after="Save">
+                        @foreach (var f in BackupFrequency.All)
+                        {
+                            <option value="@f">@f</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>At what time</label>
+                    <input type="time" @bind="_scheduleTime" @bind:after="Save" />
+                    <div class="muted small" style="margin-top:.2rem">
+                        Pick a time the PC is normally on — after closing, but before it gets switched off.
+                    </div>
+                </div>
+
+                @if (_frequency == BackupFrequency.Weekly)
+                {
+                    <div class="field">
+                        <label>Which day</label>
+                        <select @bind="_scheduleDay" @bind:after="Save">
+                            @foreach (var d in Enum.GetValues<DayOfWeek>())
+                            {
+                                <option value="@d">@d</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                <div class="field">
+                    <label>Keep how many</label>
+                    <input type="number" min="1" max="500" @bind="_keepCount" @bind:after="Save" />
+                    <div class="muted small" style="margin-top:.2rem">
+                        Older ones are removed once there are more than this. Only files WrenchDesk
+                        wrote are ever touched.
+                    </div>
+                </div>
+
+                <div class="field span-2">
+                    <label>Save them to</label>
+                    <select value="@_scheduleRoot" @onchange="OnScheduleRootChange">
+                        <option value="">The data folder (same drive as the database)</option>
+                        @foreach (var d in _drives)
+                        {
+                            <option value="@d.Root">@d.Display</option>
+                        }
+                        <option value="@CustomPathOption">Somewhere else (type a path)…</option>
+                    </select>
+                </div>
+
+                @if (_scheduleRoot != "")
+                {
+                    <div class="field span-2">
+                        <label>@(_scheduleRoot == CustomPathOption ? "Full folder path" : "Folder on that drive")</label>
+                        <input type="text" @bind="_scheduleFolder" @bind:after="Save"
+                               placeholder="WrenchDesk Backups" />
+                    </div>
+                }
+            </div>
+
+            @if (_scheduleRoot == "")
+            {
+                <div class="alert alert-warn">
+                    These backups land on the same drive as the live database. That protects you from a
+                    mistake — deleting the wrong customer — but not from the drive itself failing.
+                    Pick a USB or external drive to be covered for both.
+                </div>
+            }
+
+            <dl class="kv" style="margin-top:.5rem">
+                <dt>Schedule</dt>
+                <dd>@BackupSchedule.Describe(_frequency, _scheduleTime, _scheduleDay)</dd>
+                <dt>Saving to</dt>
+                <dd class="mono small">@ScheduleDestination()</dd>
+                <dt>Last run</dt>
+                <dd>
+                    @if (_lastRun is null)
+                    {
+                        <span class="muted">Never</span>
+                    }
+                    else
+                    {
+                        <span>@_lastRun.Value.ToString("MMM d, yyyy h:mm tt")</span>
+                    }
+                </dd>
+                <dt>Next run</dt>
+                <dd>@BackupSchedule.NextOccurrence(DateTime.Now, _frequency, _scheduleTime, _scheduleDay).ToString("dddd MMM d, h:mm tt")</dd>
+            </dl>
+
+            @if (!string.IsNullOrWhiteSpace(_lastError))
+            {
+                <div class="alert alert-danger" style="margin:1rem 0 0">
+                    <strong>Last scheduled backup failed:</strong> @_lastError
+                    <div class="small" style="margin-top:.25rem">
+                        It will be retried automatically. If the destination is a USB drive, check it is plugged in.
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Backups on hand</h2>
+        <div class="spacer"></div>
+        <span class="muted small mono">@_listedFolder</span>
+    </div>
+
+    @if (_backups.Count == 0)
+    {
+        <div class="empty" style="padding:1.75rem 1.5rem">
+            <div class="big">💾</div>
+            <div>No backups in this folder yet.</div>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <thead>
+                    <tr><th>File</th><th>Taken</th><th class="num">Size</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in _backups.Take(15))
+                    {
+                        <tr>
+                            <td class="mono small">@b.Name</td>
+                            <td class="small">@b.LastWriteTime.ToString("MMM d, yyyy h:mm tt")</td>
+                            <td class="num small">@FormatSize(b.Length)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
 @code {
+    /// <summary>Sentinel in the drive dropdowns for "let me type a path instead".</summary>
+    private const string CustomPathOption = "__custom__";
+
+    private const string DefaultFolderName = "WrenchDesk Backups";
+
     private Dictionary<string, string> _values = new();
     private string _laborRate = "";
     private string _taxRate = "";
     private string? _flash;
-    private List<FileInfo> _backups = new();
     private long _dbSize;
 
-    protected override void OnInitialized() => Load();
+    private List<DriveOption> _drives = new();
+    private List<FileInfo> _backups = new();
+    private string _listedFolder = "";
+    private bool _busy;
+
+    // Automatic schedule
+    private bool _autoEnabled;
+    private string _frequency = BackupFrequency.Daily;
+    private TimeOnly _scheduleTime = new(18, 0);
+    private DayOfWeek _scheduleDay = DayOfWeek.Friday;
+    private int _keepCount = 30;
+    private string _scheduleRoot = "";
+    private string _scheduleFolder = DefaultFolderName;
+    private DateTime? _lastRun;
+    private string _lastError = "";
+
+    // On-demand backup
+    private string _manualRoot = "";
+    private string _manualFolder = DefaultFolderName;
+    private BackupResult? _manualResult;
+
+    protected override void OnInitialized()
+    {
+        _drives = BackupService.ListDrives();
+        Load();
+
+        // Default the on-demand picker to a removable drive if one is plugged in — that is
+        // almost always what someone pressing this button is reaching for.
+        var preferred = _drives.FirstOrDefault(d => d.IsRemovable) ?? _drives.FirstOrDefault();
+        if (preferred is not null) _manualRoot = preferred.Root;
+    }
 
     private void Load()
     {
@@ -150,8 +376,96 @@
         _laborRate = (Settings.GetInt(SettingsStore.LaborRateCents) / 100m).ToString("0.00");
         _taxRate = (Settings.GetInt(SettingsStore.TaxRateBp) / 100m).ToString("0.####");
 
-        _backups = Backups.ListBackups();
+        _autoEnabled = Settings.GetBool(SettingsStore.BackupAutoEnabled);
+        _frequency = Settings.Get(SettingsStore.BackupFrequency);
+        if (!BackupFrequency.All.Contains(_frequency)) _frequency = BackupFrequency.Daily;
+
+        _scheduleTime = Settings.GetTime(SettingsStore.BackupTimeOfDay, new TimeOnly(18, 0));
+        _scheduleDay = Settings.GetDay(SettingsStore.BackupDayOfWeek, DayOfWeek.Friday);
+        _keepCount = Math.Max(1, Settings.GetInt(SettingsStore.BackupKeepCount));
+        _lastRun = Settings.GetTimestamp(SettingsStore.BackupLastRun);
+        _lastError = Settings.Get(SettingsStore.BackupLastError);
+
+        SplitStoredDestination(Settings.Get(SettingsStore.BackupDestination));
+
         _dbSize = File.Exists(Database.DatabasePath) ? new FileInfo(Database.DatabasePath).Length : 0;
+
+        _listedFolder = Backups.ScheduledDestination;
+        _backups = Backups.ListBackups(_listedFolder);
+    }
+
+    /// <summary>Turns a stored absolute path back into the drive + folder the dropdowns work in.</summary>
+    private void SplitStoredDestination(string stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            _scheduleRoot = "";
+            _scheduleFolder = DefaultFolderName;
+            return;
+        }
+
+        var match = _drives.FirstOrDefault(d =>
+            stored.StartsWith(d.Root, StringComparison.OrdinalIgnoreCase));
+
+        if (match is not null)
+        {
+            _scheduleRoot = match.Root;
+            _scheduleFolder = stored[match.Root.Length..].Trim('\\', '/');
+            if (string.IsNullOrWhiteSpace(_scheduleFolder)) _scheduleFolder = DefaultFolderName;
+        }
+        else
+        {
+            // The drive is unplugged, or it is a UNC path — keep it as typed so it is not lost.
+            _scheduleRoot = CustomPathOption;
+            _scheduleFolder = stored;
+        }
+    }
+
+    private static string Combine(string root, string folder)
+    {
+        if (root == CustomPathOption) return folder.Trim();
+        if (string.IsNullOrWhiteSpace(root)) return "";
+
+        var clean = folder.Trim().Trim('\\', '/');
+        return string.IsNullOrWhiteSpace(clean) ? root : Path.Combine(root, clean);
+    }
+
+    private string ScheduleDestination()
+    {
+        var combined = Combine(_scheduleRoot, _scheduleFolder);
+        return string.IsNullOrWhiteSpace(combined) ? Database.BackupDirectory : combined;
+    }
+
+    private string ManualDestination()
+    {
+        var combined = Combine(_manualRoot, _manualFolder);
+        return string.IsNullOrWhiteSpace(combined) ? Database.BackupDirectory : combined;
+    }
+
+    private void RefreshDrives()
+    {
+        _drives = BackupService.ListDrives();
+        _flash = $"Found {_drives.Count} drive{(_drives.Count == 1 ? "" : "s")}.";
+    }
+
+    private void OnManualRootChange(ChangeEventArgs e)
+    {
+        _manualRoot = e.Value?.ToString() ?? "";
+        _manualResult = null;
+    }
+
+    private void OnScheduleRootChange(ChangeEventArgs e)
+    {
+        _scheduleRoot = e.Value?.ToString() ?? "";
+        if (_scheduleRoot != CustomPathOption && string.IsNullOrWhiteSpace(_scheduleFolder))
+            _scheduleFolder = DefaultFolderName;
+        Save();
+    }
+
+    private void OnAutoToggle(ChangeEventArgs e)
+    {
+        _autoEnabled = e.Value is bool b && b;
+        Save();
     }
 
     private void Save()
@@ -163,20 +477,38 @@
         if (decimal.TryParse(taxText, NumberStyles.Any, CultureInfo.InvariantCulture, out var pct))
             _values[SettingsStore.TaxRateBp] = ((int)Math.Round(pct * 100m, MidpointRounding.AwayFromZero)).ToString();
 
+        _values[SettingsStore.BackupAutoEnabled] = _autoEnabled ? "true" : "false";
+        _values[SettingsStore.BackupFrequency] = _frequency;
+        _values[SettingsStore.BackupTimeOfDay] = _scheduleTime.ToString("HH:mm");
+        _values[SettingsStore.BackupDayOfWeek] = _scheduleDay.ToString();
+        _values[SettingsStore.BackupKeepCount] = Math.Clamp(_keepCount, 1, 500).ToString();
+        _values[SettingsStore.BackupDestination] = Combine(_scheduleRoot, _scheduleFolder);
+
         Settings.SetAll(_values);
         _flash = "Settings saved.";
         Load();
     }
 
-    private void BackupNow()
+    private async Task BackUpToChosen()
     {
-        var path = Backups.CreateBackup("manual");
-        _flash = $"Backup written to {Path.GetFileName(path)}.";
+        var destination = ManualDestination();
+        await RunBackup(destination);
+    }
+
+    private async Task BackUpToDataFolder() => await RunBackup(Database.BackupDirectory);
+
+    private async Task RunBackup(string destination)
+    {
+        _busy = true;
+        _manualResult = null;
+        StateHasChanged();
+
+        // Writing to a USB stick can take a moment; keep the UI responsive while it happens.
+        _manualResult = await Task.Run(() => Backups.CreateBackup(destination, label: "manual"));
+
+        _busy = false;
         Load();
     }
 
-    private static string FormatSize(long bytes) =>
-        bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:0.0} MB"
-        : bytes >= 1024 ? $"{bytes / 1024d:0} KB"
-        : $"{bytes} bytes";
+    private static string FormatSize(long bytes) => DriveOption.FormatSize(bytes);
 }

@@ -36,8 +36,9 @@ Export any date range to CSV for a bookkeeper or a tax return.
 Google Maps for whoever is driving. A whole run can be exported as an `.ics` file and imported into
 Google Calendar in one go.
 
-**Backups** — the entire system is one SQLite file. A backup runs automatically every day and the last
-30 are kept. Copying that one file is a complete backup of the business.
+**Backups** — the entire system is one SQLite file. Press **Back up now** to write a copy straight to
+a USB stick or external drive, or switch on a daily/weekly schedule that does it unattended.
+Scheduled backups are **off until you turn them on**. See [Backups](#backups) below.
 
 ---
 
@@ -85,11 +86,8 @@ Everything is in one file:
 Documents\WrenchDesk\wrenchdesk.db
 ```
 
-Daily backups land in `Documents\WrenchDesk\Backups`. **Settings → Your data** shows both paths and
-has a *Back up now* button.
-
-To move the shop to a new PC, or to keep an off-site copy, copy `wrenchdesk.db`. That's the whole
-system — there is no separate database server to install or configure.
+To move the shop to a new PC, or to keep an off-site copy, copy that file. That's the whole system —
+there is no separate database server to install or configure.
 
 To put the data somewhere else (a synced folder, a NAS, a second drive), edit `appsettings.json`
 next to the exe:
@@ -111,6 +109,60 @@ next to the exe:
 | `AllowLanAccess` | `false` locks it to the shop PC only — no phone or tablet access. |
 | `OpenBrowser` | `false` stops it opening a browser window on startup. |
 | `DataDirectory` | Where the database and backups live. Blank means `Documents\WrenchDesk`. |
+
+---
+
+## Backups
+
+Everything the shop has is in one file, so a backup is just a copy of it. WrenchDesk gives you two
+ways to make one, both under **Settings**.
+
+### Back up now (to a USB stick or external drive)
+
+Plug the drive in, open **Settings → Back up now**, pick it from the list and press
+**Back up to this drive**. The list shows every drive the shop PC can see, with free space, and puts
+removable drives at the top. Pick *Somewhere else* to type a path — a network share or a second
+internal disk.
+
+Two things worth knowing:
+
+- The drives listed are the ones plugged into **the shop PC**, not into the tablet you might be
+  holding. The app writes the file server-side.
+- On-demand backups are **never deleted automatically**. They sit there until you remove them.
+
+### On a schedule
+
+**Off by default.** Nothing is written on a schedule until you switch on *Run backups on a schedule*
+under **Settings → Automatic backups**. Then choose:
+
+| Setting | Notes |
+| --- | --- |
+| How often | Daily, or weekly on a day you pick |
+| At what time | Pick a time the PC is normally on — after closing, before it gets switched off |
+| Keep how many | Older ones are removed past this count (default 30) |
+| Save them to | The data folder, or any drive — a USB stick left plugged in works well |
+
+If the PC was switched off when a backup was due, it runs at the next opportunity rather than
+skipping — a late backup beats no backup. Settings shows the last run, the next one due, and any
+error from the last attempt (an unplugged USB drive, most likely). A failed run is retried on the
+next check rather than being marked done.
+
+**Retention only ever deletes files WrenchDesk itself wrote** — files named `wrenchdesk-*.db`.
+Pointing it at a folder with your own documents in it cannot touch them. It also never deletes the
+backup it just made.
+
+### Restoring one
+
+Every backup file is a complete, working database — there is nothing else to restore. Close
+WrenchDesk, rename the backup to `wrenchdesk.db`, and put it where the old one was
+(**Settings → Your data** shows the exact path). Start WrenchDesk again.
+
+### Which destination to choose
+
+A backup on the same drive as the live database protects you from a mistake — deleting the wrong
+customer — but not from the drive itself failing. For a shop replacing paper, a cheap USB stick left
+plugged in, with a daily schedule pointed at it, covers both. Better still, keep a second one off
+site and swap them occasionally.
 
 ---
 
