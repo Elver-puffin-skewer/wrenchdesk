@@ -1,0 +1,50 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore WrenchDesk.sln
+
+      - name: Build
+        run: dotnet build WrenchDesk.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test WrenchDesk.sln --configuration Release --no-build --verbosity normal
+
+  package:
+    # Only build the shop-ready exe once the tests are green.
+    needs: test
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish single-file build
+        run: powershell -ExecutionPolicy Bypass -File build/publish.ps1
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: WrenchDesk-win-x64
+          path: build/output/
+          retention-days: 30

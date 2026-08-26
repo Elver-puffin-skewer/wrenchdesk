@@ -1,0 +1,35 @@
+@* Simple dialog shell. Rendered only when open so form state resets between uses. *@
+
+<div class="modal-backdrop" @onclick="OnBackdropClick">
+    <div class="modal @(Wide ? "wide" : "")" @onclick:stopPropagation="true">
+        <div class="modal-head">
+            <h2>@Title</h2>
+            <div class="spacer"></div>
+            <button class="btn btn-ghost btn-sm" @onclick="Close" aria-label="Close">✕</button>
+        </div>
+
+        <div class="modal-body">
+            @ChildContent
+        </div>
+
+        @if (Footer is not null)
+        {
+            <div class="modal-foot">
+                @Footer
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    // Clicking the dark area behind the dialog dismisses it, matching what people expect.
+    private Task OnBackdropClick() => Close();
+}

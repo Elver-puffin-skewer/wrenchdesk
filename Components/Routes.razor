@@ -1,0 +1,27 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <div class="page-head">
+                <div>
+                    <h1>Page not found</h1>
+                    <p class="sub">That address does not match anything in WrenchDesk.</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="empty">
+                    <div class="big">🔧</div>
+                    <div>The link may be out of date, or the record may have been deleted.</div>
+                    <div class="btn-row" style="margin-top:1rem;justify-content:center">
+                        <a class="btn btn-primary" href="/">Back to the dashboard</a>
+                        <a class="btn" href="/customers">Customers</a>
+                        <a class="btn" href="/tickets">Tickets</a>
+                    </div>
+                </div>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

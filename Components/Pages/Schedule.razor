@@ -1,0 +1,385 @@
+@page "/schedule"
+@inject ScheduleRepo Repo
+@inject CustomerRepo Customers
+@inject SettingsStore Settings
+
+<PageTitle>Schedule — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Schedule</h1>
+        <p class="sub">Pickups, deliveries and on-site jobs.</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+        <a class="btn" href="/export/schedule.ics?days=90">⬇ Export .ics</a>
+        <button class="btn btn-primary" @onclick="() => OpenEditor(null)">+ Schedule something</button>
+    </div>
+</div>
+
+<div class="alert alert-info no-print">
+    <strong>Google Calendar:</strong> each stop below has an <em>Add to Google Calendar</em> link that opens the
+    event prefilled — press Save and it lands on the shop calendar. To move a whole run over at once, use
+    <strong>Export .ics</strong> and import the file at Google Calendar → Settings → Import &amp; export.
+</div>
+
+<div class="filters no-print">
+    <div class="field">
+        <label>Show</label>
+        <select value="@_range" @onchange="OnRangeChange">
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="upcoming">Next 30 days</option>
+            <option value="all">Everything (± 90 days)</option>
+        </select>
+    </div>
+    <div class="field">
+        <label>Status</label>
+        <select value="@_statusFilter" @onchange="OnStatusFilterChange">
+            <option value="Scheduled">Scheduled only</option>
+            <option value="">All</option>
+            <option value="Done">Done</option>
+            <option value="Canceled">Canceled</option>
+        </select>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="alert alert-ok">@_flash</div>
+}
+
+@if (_rows.Count == 0)
+{
+    <div class="card">
+        <div class="empty">
+            <div class="big">📅</div>
+            <div>Nothing scheduled in this range.</div>
+            <div style="margin-top:.75rem">
+                <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">Schedule a pickup</button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    @foreach (var day in _rows.GroupBy(r => r.Start?.Date ?? DateTime.MinValue).OrderBy(g => g.Key))
+    {
+        <div class="day-group">
+            <div class="day-head">
+                @DayLabel(day.Key)
+                <span class="count">— @day.Count() stop@(day.Count() == 1 ? "" : "s")</span>
+            </div>
+
+            @foreach (var a in day.OrderBy(x => x.Start))
+            {
+                <div class="appt @KindClass(a.Kind) @(a.Status == "Done" ? "done" : a.Status == "Canceled" ? "canceled" : "")">
+                    <div class="when">@(a.Start?.ToString("h:mm tt") ?? "—")</div>
+                    <div class="body">
+                        <div class="who">
+                            @a.Kind — @(string.IsNullOrWhiteSpace(a.CustomerName) ? "(no customer)" : a.CustomerName)
+                            @if (!string.IsNullOrWhiteSpace(a.TicketNumber))
+                            {
+                                <a class="chip mono" style="margin-left:.4rem" href="@($"/tickets/{a.TicketId}")">@a.TicketNumber</a>
+                            }
+                        </div>
+                        <div class="meta">
+                            @if (!string.IsNullOrWhiteSpace(a.CustomerPhone)) { <span>@a.CustomerPhone · </span> }
+                            @(string.IsNullOrWhiteSpace(a.Address) ? "No address on file" : a.Address)
+                            @if (!string.IsNullOrWhiteSpace(a.Notes)) { <span> · @a.Notes</span> }
+                        </div>
+
+                        <div class="acts no-print" style="margin-top:.5rem">
+                            <a class="btn btn-sm" target="_blank" href="@CalendarLinks.GoogleCalendarUrl(a)">Google Calendar ↗</a>
+                            @if (!string.IsNullOrWhiteSpace(a.Address))
+                            {
+                                <a class="btn btn-sm" target="_blank" href="@CalendarLinks.MapsUrl(a.Address)">Directions ↗</a>
+                            }
+                            @if (a.Status == "Scheduled")
+                            {
+                                var id = a.Id;
+                                <button class="btn btn-sm" @onclick="() => MarkDone(id)">✓ Done</button>
+                            }
+                            <button class="btn btn-sm" @onclick="() => OpenEditor(a.Id)">Edit</button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (_editorOpen)
+{
+    <Modal Title="@(_editing.Id == 0 ? "Schedule a pickup or delivery" : "Edit appointment")" OnClose="CloseEditor">
+        <ChildContent>
+            <div class="field">
+                <label>Customer</label>
+                @if (_selectedCustomer is not null)
+                {
+                    <div class="row-between" style="border:1px solid var(--line);border-radius:6px;padding:.5rem .7rem">
+                        <div>
+                            <div class="strong">@_selectedCustomer.DisplayName</div>
+                            <div class="muted small">@(string.IsNullOrWhiteSpace(_selectedCustomer.Phone) ? "—" : _selectedCustomer.Phone)</div>
+                        </div>
+                        <button class="btn btn-sm" @onclick="ClearCustomer">Change</button>
+                    </div>
+                }
+                else
+                {
+                    <input type="search" placeholder="Search name, business or phone…"
+                           value="@_customerQuery" @oninput="OnCustomerSearch" />
+                    @if (_customerMatches.Count > 0)
+                    {
+                        <div class="table-wrap" style="margin-top:.5rem;border:1px solid var(--line);border-radius:6px">
+                            <table class="data">
+                                <tbody>
+                                    @foreach (var c in _customerMatches.Take(6))
+                                    {
+                                        var cust = c;
+                                        <tr style="cursor:pointer" @onclick="() => PickCustomer(cust)">
+                                            <td class="strong">@c.DisplayName</td>
+                                            <td class="tnum small">@c.Phone</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>Type</label>
+                    <select @bind="_editing.Kind">
+                        @foreach (var k in Appointment.Kinds)
+                        {
+                            <option value="@k">@k</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>How long</label>
+                    <select @bind="_editing.DurationMin">
+                        <option value="30">30 minutes</option>
+                        <option value="60">1 hour</option>
+                        <option value="120">2 hours</option>
+                        <option value="240">Half day</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Date</label>
+                    <input type="date" @bind="_editDate" />
+                </div>
+                <div class="field">
+                    <label>Time</label>
+                    <input type="time" @bind="_editTime" />
+                </div>
+                <div class="field span-2">
+                    <label>Address</label>
+                    <input type="text" @bind="_editing.Address" />
+                </div>
+                <div class="field span-2">
+                    <label>Notes</label>
+                    <input type="text" placeholder="Gate code, call ahead, bring the trailer…" @bind="_editing.Notes" />
+                </div>
+                @if (_editing.Id != 0)
+                {
+                    <div class="field span-2">
+                        <label>Status</label>
+                        <select @bind="_editing.Status">
+                            @foreach (var s in Appointment.Statuses)
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+
+            @if (_editError is not null)
+            {
+                <div class="alert alert-danger" style="margin:0">@_editError</div>
+            }
+        </ChildContent>
+        <Footer>
+            @if (_editing.Id != 0)
+            {
+                <button class="btn btn-danger" @onclick="DeleteAppointment">Delete</button>
+            }
+            <button class="btn" @onclick="CloseEditor">Cancel</button>
+            <button class="btn btn-primary" @onclick="SaveAppointment">Save</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "customerId")]
+    public long? CustomerIdFromUrl { get; set; }
+
+    private string _range = "upcoming";
+    private string _statusFilter = "Scheduled";
+    private List<AppointmentRow> _rows = new();
+    private string? _flash;
+
+    private bool _editorOpen;
+    private Appointment _editing = new();
+    private DateTime _editDate = DateTime.Today;
+    private TimeOnly _editTime = new(9, 0);
+    private Customer? _selectedCustomer;
+    private string _customerQuery = "";
+    private List<Customer> _customerMatches = new();
+    private string? _editError;
+
+    protected override void OnParametersSet()
+    {
+        // Arriving from a customer's page with ?customerId= opens the editor already pointed at them.
+        if (CustomerIdFromUrl is not null && !_editorOpen && _editing.Id == 0 && _selectedCustomer is null)
+        {
+            OpenEditor(null);
+            var c = Customers.Get(CustomerIdFromUrl.Value);
+            if (c is not null) PickCustomer(c);
+        }
+
+        Load();
+    }
+
+    private void Load()
+    {
+        var today = DateTime.Now.Date;
+
+        _rows = _range switch
+        {
+            "today" => Repo.ForDay(today),
+            "week" => Repo.InRange(StartOfWeek(today), StartOfWeek(today).AddDays(6)),
+            "upcoming" => Repo.InRange(today, today.AddDays(30)),
+            _ => Repo.InRange(today.AddDays(-90), today.AddDays(90))
+        };
+
+        if (!string.IsNullOrWhiteSpace(_statusFilter))
+            _rows = _rows.Where(r => r.Status == _statusFilter).ToList();
+    }
+
+    private DateTime StartOfWeek(DateTime day)
+    {
+        var start = Settings.GetWeekStart();
+        var delta = ((int)day.DayOfWeek - (int)start + 7) % 7;
+        return day.Date.AddDays(-delta);
+    }
+
+    private void OnRangeChange(ChangeEventArgs e)
+    {
+        _range = e.Value?.ToString() ?? "upcoming";
+        Load();
+    }
+
+    private void OnStatusFilterChange(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString() ?? "";
+        Load();
+    }
+
+    private void MarkDone(long id)
+    {
+        Repo.SetStatus(id, "Done");
+        _flash = "Marked done.";
+        Load();
+    }
+
+    // ---- Editor ----
+
+    private void OpenEditor(long? id)
+    {
+        _editError = null;
+        _customerQuery = "";
+        _customerMatches = new();
+
+        if (id is null)
+        {
+            _editing = new Appointment { Kind = "Pickup", DurationMin = 60, Status = "Scheduled" };
+            _editDate = DateTime.Today;
+            _editTime = new TimeOnly(9, 0);
+            _selectedCustomer = null;
+        }
+        else
+        {
+            _editing = Repo.Get(id.Value) ?? new Appointment();
+            var start = _editing.Start ?? DateTime.Now;
+            _editDate = start.Date;
+            _editTime = TimeOnly.FromDateTime(start);
+            _selectedCustomer = _editing.CustomerId is null ? null : Customers.Get(_editing.CustomerId.Value);
+        }
+
+        _editorOpen = true;
+    }
+
+    private void CloseEditor() => _editorOpen = false;
+
+    private void OnCustomerSearch(ChangeEventArgs e)
+    {
+        _customerQuery = e.Value?.ToString() ?? "";
+        _customerMatches = string.IsNullOrWhiteSpace(_customerQuery) ? new() : Customers.Search(_customerQuery);
+    }
+
+    private void PickCustomer(Customer c)
+    {
+        _selectedCustomer = c;
+        _editing.CustomerId = c.Id;
+        _customerQuery = "";
+        _customerMatches = new();
+
+        // Save a retype: default the stop to the address already on file.
+        if (string.IsNullOrWhiteSpace(_editing.Address) && c.HasAddress)
+            _editing.Address = c.OneLineAddress;
+    }
+
+    private void ClearCustomer()
+    {
+        _selectedCustomer = null;
+        _editing.CustomerId = null;
+    }
+
+    private void SaveAppointment()
+    {
+        if (_selectedCustomer is null)
+        {
+            _editError = "Pick a customer for this stop.";
+            return;
+        }
+
+        _editing.ScheduledLocal = $"{_editDate:yyyy-MM-dd} {_editTime:HH:mm}";
+
+        if (_editing.Id == 0) Repo.Insert(_editing);
+        else Repo.Update(_editing);
+
+        _editorOpen = false;
+        _flash = $"{_editing.Kind} saved for {_editDate:MMM d} at {_editTime:h:mm tt}.";
+        Load();
+    }
+
+    private void DeleteAppointment()
+    {
+        if (_editing.Id != 0) Repo.Delete(_editing.Id);
+        _editorOpen = false;
+        _flash = "Appointment removed.";
+        Load();
+    }
+
+    private static string DayLabel(DateTime day)
+    {
+        if (day == DateTime.MinValue) return "Unscheduled";
+        var today = DateTime.Now.Date;
+        if (day == today) return $"Today — {day:dddd, MMMM d}";
+        if (day == today.AddDays(1)) return $"Tomorrow — {day:dddd, MMMM d}";
+        if (day == today.AddDays(-1)) return $"Yesterday — {day:dddd, MMMM d}";
+        return day.ToString("dddd, MMMM d");
+    }
+
+    private static string KindClass(string kind) => kind switch
+    {
+        "Pickup" => "kind-pickup",
+        "Delivery" => "kind-delivery",
+        _ => "kind-other"
+    };
+}

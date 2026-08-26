@@ -1,0 +1,682 @@
+@page "/tickets/{Id:long}"
+@inject TicketRepo Tickets
+@inject CustomerRepo Customers
+@inject MoneyRepo Payments
+@inject ScheduleRepo Schedule
+@inject SettingsStore Settings
+@inject NavigationManager Nav
+
+<PageTitle>@(_ticket?.Number ?? "Ticket") — WrenchDesk</PageTitle>
+
+@if (_ticket is null)
+{
+    <div class="alert alert-warn">That ticket no longer exists. <a href="/tickets">Back to tickets</a></div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>
+                <span class="mono">@_ticket.Number</span>
+                <StatusBadge Status="@_ticket.Status" />
+            </h1>
+            <p class="sub">
+                <a href="@($"/customers/{_ticket.CustomerId}")">@(_customer?.DisplayName ?? "Customer")</a>
+                @if (_equipment is not null) { <span> · @_equipment.DisplayName</span> }
+                <span> · in @FormatIso(_ticket.IntakeOn)</span>
+                @if (!string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · promised @FormatIso(_ticket.PromisedOn)</span> }
+            </p>
+        </div>
+        <div class="spacer"></div>
+        <div class="btn-row no-print">
+            <a class="btn" href="@($"/tickets/{Id}/print")" target="_blank">🖨 Print</a>
+            <button class="btn" @onclick="OpenPayment">+ Payment</button>
+            <button class="btn btn-primary" @onclick="OpenSchedule">📅 Schedule</button>
+        </div>
+    </div>
+
+    @if (_flash is not null)
+    {
+        <div class="alert alert-ok">@_flash</div>
+    }
+
+    <div class="card no-print">
+        <div class="card-body" style="padding:.8rem 1.1rem">
+            <div class="btn-row">
+                <span class="muted small" style="align-self:center;margin-right:.25rem">Move to:</span>
+                @foreach (var s in TicketStatus.All.Where(s => s != _ticket.Status))
+                {
+                    var status = s;
+                    <button class="btn btn-sm" @onclick="() => ChangeStatus(status)">@status</button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="grid cols-2">
+        <div class="card">
+            <div class="card-head"><h2>The job</h2></div>
+            <div class="card-body">
+                <div class="field">
+                    <label>Customer's complaint</label>
+                    <textarea rows="3" @bind="_ticket.Complaint" @bind:after="SaveTicket"></textarea>
+                </div>
+                <div class="field">
+                    <label>What we found / did</label>
+                    <textarea rows="4" placeholder="Carb gummed up, cleaned and rebuilt. New plug and fuel filter."
+                              @bind="_ticket.Diagnosis" @bind:after="SaveTicket"></textarea>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label>Internal notes <span class="muted" style="text-transform:none">(not printed)</span></label>
+                    <textarea rows="2" @bind="_ticket.Notes" @bind:after="SaveTicket"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head"><h2>Dates &amp; details</h2></div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Date in</label>
+                        <input type="date" value="@_ticket.IntakeOn" @onchange="e => SetDate(e, d => _ticket!.IntakeOn = d ?? _ticket.IntakeOn)" />
+                    </div>
+                    <div class="field">
+                        <label>Promised by</label>
+                        <input type="date" value="@_ticket.PromisedOn" @onchange="e => SetDate(e, d => _ticket!.PromisedOn = d)" />
+                    </div>
+                    <div class="field">
+                        <label>Equipment</label>
+                        <select value="@(_ticket.EquipmentId?.ToString() ?? "0")" @onchange="OnEquipmentChange">
+                            <option value="0">— not specified —</option>
+                            @foreach (var e in _customerEquipment)
+                            {
+                                <option value="@e.Id">@e.DisplayName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Sales tax %</label>
+                        <input type="text" value="@((_ticket.TaxRateBp / 100m).ToString("0.####"))" @onchange="OnTaxChange" />
+                    </div>
+                </div>
+
+                <div class="btn-row" style="margin-top:.5rem">
+                    <button class="btn btn-sm" @onclick="Duplicate">Duplicate as new estimate</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => _confirmDelete = true">Delete ticket</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <h2>Parts &amp; labor</h2>
+            <div class="spacer"></div>
+            <div class="btn-row no-print">
+                <button class="btn btn-sm" @onclick="@(() => AddLine("Labor"))">+ Labor</button>
+                <button class="btn btn-sm" @onclick="@(() => AddLine("Part"))">+ Part</button>
+                <button class="btn btn-sm" @onclick="@(() => AddLine("Fee"))">+ Fee</button>
+                <button class="btn btn-sm" @onclick="@(() => AddLine("Discount"))">+ Discount</button>
+            </div>
+        </div>
+
+        @if (_lines.Count == 0)
+        {
+            <div class="empty">
+                <div class="big">🔩</div>
+                <div>Nothing priced yet.</div>
+                <div class="btn-row" style="margin-top:.75rem;justify-content:center">
+                    <button class="btn btn-primary btn-sm" @onclick="@(() => AddLine("Labor"))">Add labor</button>
+                    <button class="btn btn-sm" @onclick="@(() => AddLine("Part"))">Add a part</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th style="width:7.5rem">Type</th>
+                            <th>Description</th>
+                            <th class="num" style="width:6rem">Qty</th>
+                            <th class="num" style="width:8rem">Each</th>
+                            <th class="shrink">Tax</th>
+                            <th class="num" style="width:8rem">Total</th>
+                            <th class="shrink no-print"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _lines)
+                        {
+                            var l = line;
+                            <tr>
+                                <td>
+                                    <select value="@l.Kind" @onchange="e => OnKindChange(l, e)">
+                                        @foreach (var k in TicketLine.Kinds)
+                                        {
+                                            <option value="@k">@k</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" placeholder="@PlaceholderFor(l.Kind)"
+                                           value="@l.Description"
+                                           @onchange="e => OnDescriptionChange(l, e)" />
+                                </td>
+                                <td>
+                                    <input type="text" class="tnum" style="text-align:right"
+                                           value="@l.Qty.ToString("0.###")"
+                                           @onchange="e => OnQtyChange(l, e)" />
+                                </td>
+                                <td>
+                                    <input type="text" class="tnum" style="text-align:right"
+                                           value="@((l.UnitCents / 100m).ToString("0.00"))"
+                                           @onchange="e => OnUnitChange(l, e)" />
+                                </td>
+                                <td class="shrink" style="text-align:center">
+                                    <input type="checkbox" checked="@l.Taxable"
+                                           @onchange="e => OnTaxableChange(l, e)" />
+                                </td>
+                                <td class="num strong">@Money.Fmt(l.TotalCents)</td>
+                                <td class="shrink no-print">
+                                    <button class="btn btn-ghost btn-sm" title="Remove line"
+                                            @onclick="() => RemoveLine(l)">✕</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-body" style="border-top:1px solid var(--line-2)">
+                <div class="totals">
+                    <div class="line"><span>Subtotal</span><span class="tnum">@Money.Fmt(_totals.SubtotalCents)</span></div>
+                    @if (_ticket.TaxRateBp > 0)
+                    {
+                        <div class="line">
+                            <span>Sales tax (@((_ticket.TaxRateBp / 100m).ToString("0.##"))%)</span>
+                            <span class="tnum">@Money.Fmt(_totals.TaxCents)</span>
+                        </div>
+                    }
+                    <div class="line grand"><span>Total</span><span class="tnum">@Money.Fmt(_totals.TotalCents)</span></div>
+                    @if (_totals.PaidCents != 0)
+                    {
+                        <div class="line"><span>Paid</span><span class="tnum money-pos">−@Money.Fmt(_totals.PaidCents)</span></div>
+                        <div class="line bal">
+                            <span>Balance due</span>
+                            <span class="tnum @(_totals.BalanceCents > 0 ? "money-owed" : "money-pos")">
+                                @Money.Fmt(_totals.BalanceCents)
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="grid cols-2">
+        <div class="card">
+            <div class="card-head">
+                <h2>Payments</h2>
+                <div class="spacer"></div>
+                <button class="btn btn-sm no-print" @onclick="OpenPayment">+ Record payment</button>
+            </div>
+
+            @if (_payments.Count == 0)
+            {
+                <div class="empty" style="padding:1.75rem 1.5rem">
+                    <div class="big">💵</div>
+                    <div>Nothing paid on this ticket yet.</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr><th>Date</th><th>Method</th><th>Ref / note</th><th class="num">Amount</th><th class="shrink no-print"></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _payments)
+                            {
+                                var pay = p;
+                                <tr>
+                                    <td class="tnum small">@FormatIso(p.PaidOn)</td>
+                                    <td class="small">@p.Method</td>
+                                    <td class="small muted">@($"{p.Reference} {p.Note}".Trim())</td>
+                                    <td class="num money-pos">@Money.Fmt(p.AmountCents)</td>
+                                    <td class="shrink no-print">
+                                        <button class="btn btn-ghost btn-sm" title="Remove payment"
+                                                @onclick="() => DeletePayment(pay.Id)">✕</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <h2>Pickup &amp; delivery</h2>
+                <div class="spacer"></div>
+                <button class="btn btn-sm no-print" @onclick="OpenSchedule">+ Schedule</button>
+            </div>
+
+            @if (_appointments.Count == 0)
+            {
+                <div class="empty" style="padding:1.75rem 1.5rem">
+                    <div class="big">📅</div>
+                    <div>Nothing scheduled for this ticket.</div>
+                </div>
+            }
+            else
+            {
+                <div class="card-body">
+                    @foreach (var a in _appointments)
+                    {
+                        <div class="appt @(a.Status == "Done" ? "done" : a.Status == "Canceled" ? "canceled" : "")">
+                            <div class="when">@(a.Start?.ToString("MMM d") ?? "—")<br /><span class="muted small">@(a.Start?.ToString("h:mm tt"))</span></div>
+                            <div class="body">
+                                <div class="who">@a.Kind</div>
+                                <div class="meta">@(string.IsNullOrWhiteSpace(a.Address) ? a.Status : a.Address)</div>
+                                <div class="acts no-print" style="margin-top:.4rem">
+                                    <a class="btn btn-sm" target="_blank" href="@CalendarLinks.GoogleCalendarUrl(a)">Google Calendar ↗</a>
+                                    @if (!string.IsNullOrWhiteSpace(a.Address))
+                                    {
+                                        <a class="btn btn-sm" target="_blank" href="@CalendarLinks.MapsUrl(a.Address)">Directions ↗</a>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (_paymentModalOpen && _ticket is not null)
+{
+    <Modal Title="Record a payment" OnClose="() => _paymentModalOpen = false">
+        <ChildContent>
+        <div class="form-grid">
+            <div class="field">
+                <label>Amount</label>
+                <input type="text" @bind="_payAmount" />
+                @if (_totals.BalanceCents > 0)
+                {
+                    <button class="btn btn-sm" style="margin-top:.4rem" @onclick="FillBalance">
+                        Pay balance in full (@Money.Fmt(_totals.BalanceCents))
+                    </button>
+                }
+            </div>
+            <div class="field">
+                <label>Method</label>
+                <select @bind="_payMethod">
+                    @foreach (var m in Payment.Methods)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>Date</label>
+                <input type="date" @bind="_payDate" />
+            </div>
+            <div class="field">
+                <label>Check # / reference</label>
+                <input type="text" @bind="_payReference" />
+            </div>
+            <div class="field span-2">
+                <label>Note</label>
+                <input type="text" @bind="_payNote" />
+            </div>
+        </div>
+        @if (_payError is not null)
+        {
+            <div class="alert alert-danger" style="margin:.75rem 0 0">@_payError</div>
+        }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _paymentModalOpen = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="SavePayment">Record payment</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_scheduleModalOpen && _ticket is not null)
+{
+    <Modal Title="Schedule pickup or delivery" OnClose="() => _scheduleModalOpen = false">
+        <ChildContent>
+        <div class="form-grid">
+            <div class="field">
+                <label>Type</label>
+                <select @bind="_apptKind">
+                    @foreach (var k in Appointment.Kinds)
+                    {
+                        <option value="@k">@k</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>How long</label>
+                <select @bind="_apptDuration">
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="240">Half day</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Date</label>
+                <input type="date" @bind="_apptDate" />
+            </div>
+            <div class="field">
+                <label>Time</label>
+                <input type="time" @bind="_apptTime" />
+            </div>
+            <div class="field span-2">
+                <label>Address</label>
+                <input type="text" @bind="_apptAddress" />
+                <div class="muted small" style="margin-top:.2rem">Prefilled from the customer's record.</div>
+            </div>
+            <div class="field span-2">
+                <label>Notes</label>
+                <input type="text" placeholder="Gate code, call ahead, bring the trailer…" @bind="_apptNotes" />
+            </div>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _scheduleModalOpen = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="SaveAppointment">Schedule it</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_confirmDelete && _ticket is not null)
+{
+    <Modal Title="Delete this ticket?" OnClose="() => _confirmDelete = false">
+        <ChildContent>
+        <p>
+            <strong class="mono">@_ticket.Number</strong> and all of its parts, labor and payment
+            records will be permanently removed. This cannot be undone.
+        </p>
+        <p class="muted small">
+            If you only want it out of the way, move it to <strong>Declined</strong> or
+            <strong>Closed</strong> instead — that keeps the customer's history intact.
+        </p>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _confirmDelete = false">Keep it</button>
+            <button class="btn btn-danger" @onclick="DeleteTicket">Delete permanently</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Ticket? _ticket;
+    private Customer? _customer;
+    private Equipment? _equipment;
+    private List<Equipment> _customerEquipment = new();
+    private List<TicketLine> _lines = new();
+    private List<PaymentRow> _payments = new();
+    private List<AppointmentRow> _appointments = new();
+    private TicketTotals _totals = new();
+    private string? _flash;
+    private bool _confirmDelete;
+
+    private bool _paymentModalOpen;
+    private string _payAmount = "";
+    private string _payMethod = "Cash";
+    private DateTime _payDate = DateTime.Today;
+    private string _payReference = "";
+    private string _payNote = "";
+    private string? _payError;
+
+    private bool _scheduleModalOpen;
+    private string _apptKind = "Pickup";
+    private int _apptDuration = 60;
+    private DateTime _apptDate = DateTime.Today;
+    private TimeOnly _apptTime = new(9, 0);
+    private string _apptAddress = "";
+    private string _apptNotes = "";
+
+    protected override void OnParametersSet() => Load();
+
+    private void Load()
+    {
+        _ticket = Tickets.Get(Id);
+        if (_ticket is null) return;
+
+        _customer = Customers.Get(_ticket.CustomerId);
+        _customerEquipment = Customers.EquipmentFor(_ticket.CustomerId, includeArchived: true);
+        _equipment = _ticket.EquipmentId is null ? null : _customerEquipment.FirstOrDefault(e => e.Id == _ticket.EquipmentId);
+
+        _lines = Tickets.Lines(Id);
+        _payments = Payments.ForTicket(Id);
+        _appointments = Schedule.ForTicket(Id);
+        _totals = TicketTotals.From(_lines, _ticket.TaxRateBp, _payments.Sum(p => p.AmountCents));
+    }
+
+    private void SaveTicket()
+    {
+        if (_ticket is null) return;
+        Tickets.Update(_ticket);
+        Recalculate();
+    }
+
+    private void Recalculate()
+    {
+        if (_ticket is null) return;
+        _totals = TicketTotals.From(_lines, _ticket.TaxRateBp, _payments.Sum(p => p.AmountCents));
+    }
+
+    private void ChangeStatus(string status)
+    {
+        Tickets.SetStatus(Id, status);
+        _flash = $"Moved to {status}.";
+        Load();
+    }
+
+    private void SetDate(ChangeEventArgs e, Action<string?> assign)
+    {
+        var raw = e.Value?.ToString();
+        assign(string.IsNullOrWhiteSpace(raw) ? null : raw);
+        SaveTicket();
+    }
+
+    private void OnEquipmentChange(ChangeEventArgs e)
+    {
+        if (_ticket is null) return;
+        var id = long.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _ticket.EquipmentId = id == 0 ? null : id;
+        SaveTicket();
+        Load();
+    }
+
+    private void OnTaxChange(ChangeEventArgs e)
+    {
+        if (_ticket is null) return;
+        var raw = (e.Value?.ToString() ?? "0").Replace("%", "").Trim();
+        _ticket.TaxRateBp = decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var pct)
+            ? (int)Math.Round(pct * 100m, MidpointRounding.AwayFromZero)
+            : 0;
+        SaveTicket();
+    }
+
+    // ---- Lines ----
+
+    private void AddLine(string kind)
+    {
+        var line = new TicketLine
+        {
+            TicketId = Id,
+            Kind = kind,
+            QtyMilli = 1000,
+            // Labor defaults to the shop rate so the common case is one number away from done.
+            UnitCents = kind == "Labor" ? Settings.GetInt(SettingsStore.LaborRateCents) : 0,
+            Taxable = kind != "Labor"
+        };
+
+        Tickets.AddLine(line);
+        Load();
+    }
+
+    private void SaveLine(TicketLine line)
+    {
+        Tickets.UpdateLine(line);
+        Recalculate();
+    }
+
+    private void RemoveLine(TicketLine line)
+    {
+        Tickets.DeleteLine(line.Id);
+        Load();
+    }
+
+    private void OnKindChange(TicketLine line, ChangeEventArgs e)
+    {
+        line.Kind = e.Value?.ToString() ?? "Part";
+        SaveLine(line);
+    }
+
+    private void OnDescriptionChange(TicketLine line, ChangeEventArgs e)
+    {
+        line.Description = e.Value?.ToString() ?? "";
+        SaveLine(line);
+    }
+
+    private void OnTaxableChange(TicketLine line, ChangeEventArgs e)
+    {
+        line.Taxable = e.Value is bool b && b;
+        SaveLine(line);
+    }
+
+    private void OnQtyChange(TicketLine line, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var qty))
+            line.Qty = qty;
+        SaveLine(line);
+    }
+
+    private void OnUnitChange(TicketLine line, ChangeEventArgs e)
+    {
+        if (Money.TryParse(e.Value?.ToString(), out var cents))
+            line.UnitCents = cents;
+        SaveLine(line);
+    }
+
+    private static string PlaceholderFor(string kind) => kind switch
+    {
+        "Labor" => "Carb rebuild, tune-up, blade sharpening…",
+        "Part" => "Spark plug, air filter, drive belt…",
+        "Fee" => "Shop supplies, disposal, pickup fee…",
+        "Discount" => "Reason for the discount",
+        _ => ""
+    };
+
+    // ---- Payments ----
+
+    private void OpenPayment()
+    {
+        _payError = null;
+        _payDate = DateTime.Today;
+        _payMethod = "Cash";
+        _payReference = "";
+        _payNote = "";
+        _payAmount = _totals.BalanceCents > 0 ? (_totals.BalanceCents / 100m).ToString("0.00") : "";
+        _paymentModalOpen = true;
+    }
+
+    private void FillBalance() => _payAmount = (_totals.BalanceCents / 100m).ToString("0.00");
+
+    private void SavePayment()
+    {
+        if (_ticket is null) return;
+
+        if (!Money.TryParse(_payAmount, out var cents) || cents == 0)
+        {
+            _payError = "Enter an amount, like 85 or 85.50.";
+            return;
+        }
+
+        Payments.Insert(new Payment
+        {
+            CustomerId = _ticket.CustomerId,
+            TicketId = Id,
+            AmountCents = cents,
+            Method = _payMethod,
+            Reference = _payReference,
+            Note = _payNote,
+            PaidOn = _payDate.ToString("yyyy-MM-dd")
+        });
+
+        _paymentModalOpen = false;
+        _flash = $"Recorded {Money.Fmt(cents)}.";
+        Load();
+    }
+
+    private void DeletePayment(long paymentId)
+    {
+        Payments.Delete(paymentId);
+        Load();
+    }
+
+    // ---- Scheduling ----
+
+    private void OpenSchedule()
+    {
+        _apptKind = "Pickup";
+        _apptDuration = 60;
+        _apptDate = DateTime.Today;
+        _apptTime = new TimeOnly(9, 0);
+        _apptAddress = _customer?.OneLineAddress ?? "";
+        _apptNotes = "";
+        _scheduleModalOpen = true;
+    }
+
+    private void SaveAppointment()
+    {
+        if (_ticket is null) return;
+
+        Schedule.Insert(new Appointment
+        {
+            CustomerId = _ticket.CustomerId,
+            TicketId = Id,
+            Kind = _apptKind,
+            ScheduledLocal = $"{_apptDate:yyyy-MM-dd} {_apptTime:HH:mm}",
+            DurationMin = _apptDuration,
+            Address = _apptAddress,
+            Notes = _apptNotes,
+            Status = "Scheduled"
+        });
+
+        _scheduleModalOpen = false;
+        _flash = $"{_apptKind} scheduled for {_apptDate:MMM d} at {_apptTime:h:mm tt}.";
+        Load();
+    }
+
+    // ---- Whole-ticket actions ----
+
+    private void Duplicate()
+    {
+        var newId = Tickets.Duplicate(Id);
+        Nav.NavigateTo($"/tickets/{newId}");
+    }
+
+    private void DeleteTicket()
+    {
+        Tickets.Delete(Id);
+        Nav.NavigateTo("/tickets");
+    }
+
+    private static string FormatIso(string? iso) =>
+        DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d.ToString("MMM d, yyyy") : (iso ?? "—");
+}

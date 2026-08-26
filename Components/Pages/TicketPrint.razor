@@ -1,0 +1,202 @@
+@page "/tickets/{Id:long}/print"
+@inject TicketRepo Tickets
+@inject CustomerRepo Customers
+@inject MoneyRepo Payments
+@inject SettingsStore Settings
+
+<PageTitle>@(_ticket?.Number ?? "Ticket") — Print</PageTitle>
+
+@if (_ticket is null)
+{
+    <div class="alert alert-warn">That ticket no longer exists.</div>
+}
+else
+{
+    <div class="btn-row no-print" style="margin-bottom:1rem">
+        <button class="btn btn-primary" onclick="window.print()">🖨 Print this</button>
+        <a class="btn" href="@($"/tickets/{Id}")">Back to ticket</a>
+        <span class="muted small" style="align-self:center">
+            Printing as @(_isInvoice ? "an invoice" : "an estimate") — that follows the ticket's status.
+        </span>
+    </div>
+
+    <div class="print-sheet">
+        <div class="print-head">
+            <div>
+                <div class="shop-name">@_settings[SettingsStore.ShopName]</div>
+                @if (!string.IsNullOrWhiteSpace(_settings[SettingsStore.ShopAddress]))
+                {
+                    <div style="white-space:pre-line;font-size:.9rem">@_settings[SettingsStore.ShopAddress]</div>
+                }
+                <div style="font-size:.9rem">
+                    @_settings[SettingsStore.ShopPhone]
+                    @if (!string.IsNullOrWhiteSpace(_settings[SettingsStore.ShopEmail]))
+                    {
+                        <span> · @_settings[SettingsStore.ShopEmail]</span>
+                    }
+                </div>
+            </div>
+            <div>
+                <div class="doc-type">@(_isInvoice ? "Invoice" : "Estimate")</div>
+                <div style="text-align:right;font-size:.95rem;margin-top:.3rem">
+                    <div><strong>@_ticket.Number</strong></div>
+                    <div>Date in: @FormatIso(_ticket.IntakeOn)</div>
+                    @if (!string.IsNullOrWhiteSpace(_ticket.PromisedOn))
+                    {
+                        <div>Promised: @FormatIso(_ticket.PromisedOn)</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="print-parties">
+            <div>
+                <h4>Customer</h4>
+                <div><strong>@(_customer?.DisplayName ?? "—")</strong></div>
+                @if (_customer is not null)
+                {
+                    @if (!string.IsNullOrWhiteSpace(_customer.Address1)) { <div>@_customer.Address1</div> }
+                    @if (!string.IsNullOrWhiteSpace(_customer.Address2)) { <div>@_customer.Address2</div> }
+                    @if (!string.IsNullOrWhiteSpace(_customer.City))
+                    {
+                        <div>@_customer.City@(string.IsNullOrWhiteSpace(_customer.State) ? "" : ", " + _customer.State) @_customer.Zip</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_customer.Phone)) { <div>@_customer.Phone</div> }
+                }
+            </div>
+            <div>
+                <h4>Equipment</h4>
+                @if (_equipment is null)
+                {
+                    <div class="muted">Not specified</div>
+                }
+                else
+                {
+                    <div><strong>@_equipment.DisplayName</strong></div>
+                    @if (!string.IsNullOrWhiteSpace(_equipment.Serial)) { <div>Serial: @_equipment.Serial</div> }
+                    @if (!string.IsNullOrWhiteSpace(_equipment.EngineMake) || !string.IsNullOrWhiteSpace(_equipment.EngineModel))
+                    {
+                        <div>Engine: @($"{_equipment.EngineMake} {_equipment.EngineModel}".Trim())</div>
+                    }
+                }
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_ticket.Complaint))
+        {
+            <div style="margin-bottom:1rem">
+                <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Reported problem</h4>
+                <div style="white-space:pre-wrap">@_ticket.Complaint</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_ticket.Diagnosis))
+        {
+            <div style="margin-bottom:1rem">
+                <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Work performed</h4>
+                <div style="white-space:pre-wrap">@_ticket.Diagnosis</div>
+            </div>
+        }
+
+        <table class="data" style="margin-top:1rem">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th class="num">Qty</th>
+                    <th class="num">Each</th>
+                    <th class="num">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_lines.Count == 0)
+                {
+                    <tr><td colspan="4" class="muted">No parts or labor listed.</td></tr>
+                }
+                else
+                {
+                    @foreach (var l in _lines)
+                    {
+                        <tr>
+                            <td>
+                                @(string.IsNullOrWhiteSpace(l.Description) ? l.Kind : l.Description)
+                                @if (l.Kind is "Labor" or "Fee" or "Discount")
+                                {
+                                    <span class="muted small"> (@l.Kind)</span>
+                                }
+                            </td>
+                            <td class="num">@l.Qty.ToString("0.###")</td>
+                            <td class="num">@Money.Fmt(l.UnitCents)</td>
+                            <td class="num">@Money.Fmt(l.TotalCents)</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <div class="totals" style="margin-top:1rem">
+            <div class="line"><span>Subtotal</span><span class="tnum">@Money.Fmt(_totals.SubtotalCents)</span></div>
+            @if (_ticket.TaxRateBp > 0)
+            {
+                <div class="line">
+                    <span>Sales tax (@((_ticket.TaxRateBp / 100m).ToString("0.##"))%)</span>
+                    <span class="tnum">@Money.Fmt(_totals.TaxCents)</span>
+                </div>
+            }
+            <div class="line grand"><span>Total</span><span class="tnum">@Money.Fmt(_totals.TotalCents)</span></div>
+            @if (_totals.PaidCents != 0)
+            {
+                <div class="line"><span>Paid</span><span class="tnum">−@Money.Fmt(_totals.PaidCents)</span></div>
+                <div class="line bal"><span>Balance due</span><span class="tnum">@Money.Fmt(_totals.BalanceCents)</span></div>
+            }
+        </div>
+
+        <div class="print-foot">
+            @if (!_isInvoice && !string.IsNullOrWhiteSpace(_settings[SettingsStore.EstimateFooter]))
+            {
+                <div style="margin-bottom:.5rem">@_settings[SettingsStore.EstimateFooter]</div>
+            }
+
+            @if (!_isInvoice)
+            {
+                <div class="sig-line">Customer approval &amp; date</div>
+            }
+            else if (_totals.BalanceCents <= 0)
+            {
+                <div><strong>Paid in full — thank you!</strong></div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Ticket? _ticket;
+    private Customer? _customer;
+    private Equipment? _equipment;
+    private List<TicketLine> _lines = new();
+    private TicketTotals _totals = new();
+    private Dictionary<string, string> _settings = new();
+    private bool _isInvoice;
+
+    protected override void OnParametersSet()
+    {
+        _settings = Settings.GetAll();
+        _ticket = Tickets.Get(Id);
+        if (_ticket is null) return;
+
+        _customer = Customers.Get(_ticket.CustomerId);
+        _equipment = _ticket.EquipmentId is null ? null : Customers.GetEquipment(_ticket.EquipmentId.Value);
+        _lines = Tickets.Lines(Id);
+
+        var paid = Payments.ForTicket(Id).Sum(p => p.AmountCents);
+        _totals = TicketTotals.From(_lines, _ticket.TaxRateBp, paid);
+
+        // Still quoting means it prints as an estimate; once the work is authorised it is a bill.
+        _isInvoice = _ticket.Status != TicketStatus.Estimate && _ticket.Status != TicketStatus.Declined;
+    }
+
+    private static string FormatIso(string? iso) =>
+        DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d.ToString("MMM d, yyyy") : (iso ?? "—");
+}

@@ -1,0 +1,255 @@
+@page "/tickets/new"
+@inject CustomerRepo Customers
+@inject TicketRepo Tickets
+@inject SettingsStore Settings
+@inject NavigationManager Nav
+
+<PageTitle>New Ticket — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>New ticket</h1>
+        <p class="sub">Write up what came in. Pricing gets added on the next screen.</p>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="card">
+    <div class="card-head"><h2>1 · Who</h2></div>
+    <div class="card-body">
+        @if (_customer is not null)
+        {
+            <div class="row-between">
+                <div>
+                    <div class="strong" style="font-size:1.05rem">@_customer.DisplayName</div>
+                    <div class="muted small">
+                        @(string.IsNullOrWhiteSpace(_customer.Phone) ? "No phone on file" : _customer.Phone)
+                        @if (_customer.HasAddress) { <span> · @_customer.OneLineAddress</span> }
+                    </div>
+                </div>
+                <button class="btn btn-sm" @onclick="ClearCustomer">Change</button>
+            </div>
+        }
+        else
+        {
+            <div class="search-box" style="max-width:100%">
+                <span class="ico">🔍</span>
+                <input type="search" placeholder="Search by name, business or phone…"
+                       value="@_customerQuery" @oninput="OnCustomerSearch" />
+            </div>
+
+            @if (_customerQuery.Length > 0)
+            {
+                <div style="margin-top:.75rem">
+                    @if (_customerMatches.Count == 0)
+                    {
+                        <div class="muted small" style="margin-bottom:.6rem">No match.</div>
+                        <a class="btn btn-primary btn-sm"
+                           href="@($"/customers/new?name={Uri.EscapeDataString(_customerQuery)}")">
+                            Add &ldquo;@_customerQuery&rdquo; as a new customer
+                        </a>
+                    }
+                    else
+                    {
+                        <div class="table-wrap">
+                            <table class="data">
+                                <tbody>
+                                    @foreach (var c in _customerMatches.Take(8))
+                                    {
+                                        <tr style="cursor:pointer" @onclick="() => PickCustomer(c)">
+                                            <td class="strong">@c.DisplayName</td>
+                                            <td class="tnum small">@c.Phone</td>
+                                            <td class="muted small">@c.City</td>
+                                            <td class="shrink"><span class="muted">›</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="muted small" style="margin-top:.6rem">
+                    New face? <a href="/customers/new">Add a customer first</a>.
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@if (_customer is not null)
+{
+    <div class="card">
+        <div class="card-head">
+            <h2>2 · What machine</h2>
+            <div class="spacer"></div>
+            <a class="btn btn-sm" href="@($"/customers/{_customer.Id}")">Manage equipment</a>
+        </div>
+        <div class="card-body">
+            @if (_equipment.Count == 0)
+            {
+                <div class="alert alert-info" style="margin:0">
+                    No equipment on file for @_customer.DisplayName.
+                    You can write the ticket without it and add the machine later from their page.
+                </div>
+            }
+            else
+            {
+                <div class="field" style="margin:0">
+                    <label>Equipment</label>
+                    <select @bind="_equipmentId">
+                        <option value="0">— not specified —</option>
+                        @foreach (var e in _equipment)
+                        {
+                            <option value="@e.Id">@e.DisplayName @(string.IsNullOrWhiteSpace(e.Serial) ? "" : $"· {e.Serial}")</option>
+                        }
+                    </select>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head"><h2>3 · The job</h2></div>
+        <div class="card-body">
+            <div class="field">
+                <label>Customer's complaint</label>
+                <textarea rows="3" placeholder="Won't start. Ran fine last fall, sat all winter."
+                          @bind="_complaint" @bind:event="oninput"></textarea>
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>Date in</label>
+                    <input type="date" @bind="_intakeOn" />
+                </div>
+                <div class="field">
+                    <label>Promised by <span class="muted" style="text-transform:none">(optional)</span></label>
+                    <input type="date" @bind="_promisedOn" />
+                </div>
+                <div class="field">
+                    <label>Start as</label>
+                    <select @bind="_status">
+                        <option value="@TicketStatus.Estimate">Estimate — quoting it first</option>
+                        <option value="@TicketStatus.Approved">Approved — go ahead and fix it</option>
+                        <option value="@TicketStatus.InProgress">In Progress — working on it now</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Sales tax</label>
+                    <input type="text" value="@_taxDisplay" @onchange="OnTaxChange" />
+                    <div class="muted small" style="margin-top:.2rem">Shop default from Settings. Percent, e.g. 7.25</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-row no-print" style="margin-bottom:2rem">
+        <button class="btn btn-primary btn-lg" @onclick="Create">Create ticket</button>
+        <a class="btn" href="/tickets">Cancel</a>
+    </div>
+}
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "customerId")]
+    public long? CustomerIdFromUrl { get; set; }
+
+    private Customer? _customer;
+    private string _customerQuery = "";
+    private List<Customer> _customerMatches = new();
+
+    private List<Equipment> _equipment = new();
+    private long _equipmentId;
+
+    private string _complaint = "";
+    private DateTime _intakeOn = DateTime.Today;
+    private DateTime? _promisedOn;
+    private string _status = TicketStatus.Estimate;
+    private int _taxRateBp;
+    private string _taxDisplay = "0";
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        _taxRateBp = Settings.GetInt(SettingsStore.TaxRateBp);
+        _taxDisplay = (_taxRateBp / 100m).ToString("0.####");
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (CustomerIdFromUrl is not null && _customer is null)
+        {
+            _customer = Customers.Get(CustomerIdFromUrl.Value);
+            LoadEquipment();
+        }
+    }
+
+    private void LoadEquipment()
+    {
+        _equipment = _customer is null ? new() : Customers.EquipmentFor(_customer.Id);
+
+        // One machine on file is almost always the one that came in.
+        _equipmentId = _equipment.Count == 1 ? _equipment[0].Id : 0;
+    }
+
+    private void OnCustomerSearch(ChangeEventArgs e)
+    {
+        _customerQuery = e.Value?.ToString() ?? "";
+        _customerMatches = string.IsNullOrWhiteSpace(_customerQuery)
+            ? new()
+            : Customers.Search(_customerQuery);
+    }
+
+    private void PickCustomer(Customer c)
+    {
+        _customer = c;
+        _customerQuery = "";
+        _customerMatches = new();
+        LoadEquipment();
+    }
+
+    private void ClearCustomer()
+    {
+        _customer = null;
+        _equipment = new();
+        _equipmentId = 0;
+    }
+
+    private void OnTaxChange(ChangeEventArgs e)
+    {
+        _taxDisplay = e.Value?.ToString() ?? "0";
+        _taxRateBp = decimal.TryParse(_taxDisplay.Replace("%", "").Trim(),
+            NumberStyles.Any, CultureInfo.InvariantCulture, out var pct)
+            ? (int)Math.Round(pct * 100m, MidpointRounding.AwayFromZero)
+            : 0;
+    }
+
+    private void Create()
+    {
+        if (_customer is null)
+        {
+            _error = "Pick a customer first.";
+            return;
+        }
+
+        var ticket = new Ticket
+        {
+            CustomerId = _customer.Id,
+            EquipmentId = _equipmentId == 0 ? null : _equipmentId,
+            Status = _status,
+            Complaint = _complaint,
+            TaxRateBp = _taxRateBp,
+            IntakeOn = _intakeOn.ToString("yyyy-MM-dd"),
+            PromisedOn = _promisedOn?.ToString("yyyy-MM-dd")
+        };
+
+        var id = Tickets.Create(ticket);
+        Nav.NavigateTo($"/tickets/{id}");
+    }
+}

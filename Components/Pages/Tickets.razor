@@ -1,0 +1,162 @@
+@page "/tickets"
+@inject TicketRepo Repo
+@inject NavigationManager Nav
+
+<PageTitle>Tickets — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Tickets</h1>
+        <p class="sub">Estimates and repairs. A ticket stays the same record from quote to pickup.</p>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn btn-primary" href="/tickets/new">+ New Ticket</a>
+</div>
+
+<div class="filters no-print">
+    <div class="search-box" style="max-width:380px">
+        <span class="ico">🔍</span>
+        <input type="search" placeholder="Ticket #, customer, machine, complaint…"
+               value="@_query" @oninput="OnQueryInput" />
+    </div>
+
+    <div class="field">
+        <label>Status</label>
+        <select value="@_status" @onchange="OnStatusChange">
+            <option value="@OpenFilter">Open (all active)</option>
+            <option value="">Any status</option>
+            @foreach (var s in TicketStatus.All)
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </div>
+
+    <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn @(_unpaidOnly ? "btn-primary" : "")" @onclick="ToggleUnpaid">
+            @(_unpaidOnly ? "✓ " : "")Unpaid only
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>@_rows.Count ticket@(_rows.Count == 1 ? "" : "s")</h2>
+        <div class="spacer"></div>
+        <span class="muted small">Total shown: @Money.Fmt(_rows.Sum(r => r.TotalCents))</span>
+    </div>
+
+    @if (_rows.Count == 0)
+    {
+        <div class="empty">
+            <div class="big">🎫</div>
+            <div>No tickets match.</div>
+            <div style="margin-top:.75rem"><a class="btn btn-primary btn-sm" href="/tickets/new">Write one up</a></div>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Ticket</th>
+                        <th>In</th>
+                        <th>Customer</th>
+                        <th>Equipment</th>
+                        <th>Job</th>
+                        <th>Status</th>
+                        <th class="num">Total</th>
+                        <th class="num">Owed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _rows)
+                    {
+                        <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/tickets/{t.Id}"))">
+                            <td class="strong mono">@t.Number</td>
+                            <td class="tnum small">@FormatIso(t.IntakeOn)</td>
+                            <td>@t.CustomerName</td>
+                            <td class="small muted">@(string.IsNullOrWhiteSpace(t.EquipmentName) ? "—" : t.EquipmentName)</td>
+                            <td class="small">@Truncate(t.Complaint, 44)</td>
+                            <td><StatusBadge Status="@t.Status" /></td>
+                            <td class="num">@Money.Fmt(t.TotalCents)</td>
+                            <td class="num">
+                                @if (t.BalanceCents > 0) { <span class="money-owed">@Money.Fmt(t.BalanceCents)</span> }
+                                else if (t.TotalCents > 0) { <span class="muted">paid</span> }
+                                else { <span class="muted">—</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Sentinel for the default filter, distinct from "" which means any status.</summary>
+    private const string OpenFilter = "__open__";
+
+    [Parameter, SupplyParameterFromQuery(Name = "q")]
+    public string? QueryFromUrl { get; set; }
+
+    private string _query = "";
+    private string _status = OpenFilter;
+    private bool _unpaidOnly;
+    private List<TicketRow> _rows = new();
+
+    protected override void OnParametersSet()
+    {
+        if (QueryFromUrl is not null && _query != QueryFromUrl)
+        {
+            _query = QueryFromUrl;
+            // An explicit search should look everywhere, not just the open tickets.
+            _status = "";
+        }
+        Load();
+    }
+
+    private void Load()
+    {
+        _rows = _unpaidOnly
+            ? Repo.Unpaid()
+            : Repo.Search(_query, _status == OpenFilter ? null : _status, openOnly: _status == OpenFilter);
+
+        if (_unpaidOnly && !string.IsNullOrWhiteSpace(_query))
+        {
+            var needle = _query.Trim();
+            _rows = _rows.Where(r =>
+                r.Number.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                r.CustomerName.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                r.Complaint.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                r.EquipmentName.Contains(needle, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    private void OnQueryInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        Load();
+    }
+
+    private void OnStatusChange(ChangeEventArgs e)
+    {
+        _status = e.Value?.ToString() ?? "";
+        Load();
+    }
+
+    private void ToggleUnpaid()
+    {
+        _unpaidOnly = !_unpaidOnly;
+        Load();
+    }
+
+    private static string Truncate(string? s, int max) =>
+        string.IsNullOrWhiteSpace(s) ? "—" : s.Length <= max ? s : s[..max].TrimEnd() + "…";
+
+    private static string FormatIso(string? iso) =>
+        DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d.ToString("M/d/yy") : (iso ?? "—");
+}

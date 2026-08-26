@@ -1,0 +1,403 @@
+@page "/customers/{Id:long}"
+@inject CustomerRepo Customers
+@inject TicketRepo Tickets
+@inject MoneyRepo Payments
+@inject ScheduleRepo Schedule
+@inject NavigationManager Nav
+
+<PageTitle>@(_customer?.DisplayName ?? "Customer") — WrenchDesk</PageTitle>
+
+@if (_customer is null)
+{
+    <div class="alert alert-warn">That customer no longer exists. <a href="/customers">Back to customers</a></div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>
+                @_customer.DisplayName
+                @if (_customer.IsArchived) { <span class="chip" style="vertical-align:middle">Archived</span> }
+            </h1>
+            <p class="sub">
+                Customer since @FormatDate(_customer.CreatedUtc) ·
+                @_ticketCount ticket@(_ticketCount == 1 ? "" : "s")
+            </p>
+        </div>
+        <div class="spacer"></div>
+        <div class="btn-row no-print">
+            <a class="btn" href="@($"/customers/{Id}/edit")">Edit</a>
+            <a class="btn btn-primary" href="@($"/tickets/new?customerId={Id}")">+ New Ticket</a>
+        </div>
+    </div>
+
+    <div class="grid cols-4" style="margin-bottom:1.25rem">
+        <div class="stat">
+            <div class="label">Lifetime billed</div>
+            <div class="value sm">@Money.Fmt(_billedCents)</div>
+        </div>
+        <div class="stat good">
+            <div class="label">Lifetime paid</div>
+            <div class="value sm">@Money.Fmt(_paidCents)</div>
+        </div>
+        <div class="stat @(_billedCents - _paidCents > 0 ? "owed" : "")">
+            <div class="label">Balance</div>
+            <div class="value sm">@Money.Fmt(_billedCents - _paidCents)</div>
+        </div>
+        <div class="stat">
+            <div class="label">Equipment on file</div>
+            <div class="value sm">@_equipment.Count</div>
+        </div>
+    </div>
+
+    <div class="grid cols-2">
+        <div class="card">
+            <div class="card-head"><h2>Contact</h2></div>
+            <div class="card-body">
+                <dl class="kv">
+                    <dt>Phone</dt>
+                    <dd>
+                        @if (string.IsNullOrWhiteSpace(_customer.Phone)) { <span class="muted">—</span> }
+                        else { <a href="tel:@_customer.Phone">@_customer.Phone</a> }
+                        @if (!string.IsNullOrWhiteSpace(_customer.PhoneAlt))
+                        {
+                            <span class="muted"> · alt </span><a href="tel:@_customer.PhoneAlt">@_customer.PhoneAlt</a>
+                        }
+                    </dd>
+
+                    <dt>Email</dt>
+                    <dd>
+                        @if (string.IsNullOrWhiteSpace(_customer.Email)) { <span class="muted">—</span> }
+                        else { <a href="mailto:@_customer.Email">@_customer.Email</a> }
+                    </dd>
+
+                    <dt>Address</dt>
+                    <dd>
+                        @if (!_customer.HasAddress) { <span class="muted">—</span> }
+                        else
+                        {
+                            <div>@_customer.OneLineAddress</div>
+                            @if (!string.IsNullOrWhiteSpace(_customer.Address2))
+                            {
+                                <div class="muted small">@_customer.Address2</div>
+                            }
+                            <a class="small" target="_blank" href="@CalendarLinks.MapsUrl(_customer.OneLineAddress)">Directions ↗</a>
+                        }
+                    </dd>
+                </dl>
+
+                @if (!string.IsNullOrWhiteSpace(_customer.Notes))
+                {
+                    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line-2)">
+                        <div class="label" style="font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:650;margin-bottom:.3rem">Notes</div>
+                        <div style="white-space:pre-wrap">@_customer.Notes</div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <h2>Equipment</h2>
+                <div class="spacer"></div>
+                <button class="btn btn-sm no-print" @onclick="() => OpenEquipment(null)">+ Add</button>
+            </div>
+
+            @if (_equipment.Count == 0)
+            {
+                <div class="empty">
+                    <div class="big">🚜</div>
+                    <div>No equipment on file.</div>
+                    <div style="margin-top:.75rem">
+                        <button class="btn btn-primary btn-sm" @onclick="() => OpenEquipment(null)">Add a machine</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>Machine</th>
+                                <th>Serial</th>
+                                <th class="num">Repairs</th>
+                                <th class="shrink"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _equipment)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="strong">@e.DisplayName</div>
+                                        @if (!string.IsNullOrWhiteSpace(e.EngineMake) || !string.IsNullOrWhiteSpace(e.EngineModel))
+                                        {
+                                            <div class="muted small">Engine: @($"{e.EngineMake} {e.EngineModel}".Trim())</div>
+                                        }
+                                    </td>
+                                    <td class="mono small">@(string.IsNullOrWhiteSpace(e.Serial) ? "—" : e.Serial)</td>
+                                    <td class="num">@RepairCount(e.Id)</td>
+                                    <td class="shrink no-print">
+                                        <button class="btn btn-ghost btn-sm" @onclick="() => OpenEquipment(e)">Edit</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <h2>Estimates &amp; repairs</h2>
+            <div class="spacer"></div>
+            <a class="btn btn-sm btn-primary no-print" href="@($"/tickets/new?customerId={Id}")">+ New Ticket</a>
+        </div>
+
+        @if (_tickets.Count == 0)
+        {
+            <div class="empty">
+                <div class="big">🎫</div>
+                <div>Nothing written up for this customer yet.</div>
+            </div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Date in</th>
+                            <th>Equipment</th>
+                            <th>Job</th>
+                            <th>Status</th>
+                            <th class="num">Total</th>
+                            <th class="num">Owed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _tickets)
+                        {
+                            <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/tickets/{t.Id}"))">
+                                <td class="strong mono">@t.Number</td>
+                                <td class="tnum small">@FormatIso(t.IntakeOn)</td>
+                                <td class="small">@(string.IsNullOrWhiteSpace(t.EquipmentName) ? "—" : t.EquipmentName)</td>
+                                <td class="small">@Truncate(t.Complaint, 50)</td>
+                                <td><StatusBadge Status="@t.Status" /></td>
+                                <td class="num">@Money.Fmt(t.TotalCents)</td>
+                                <td class="num">
+                                    @if (t.BalanceCents > 0) { <span class="money-owed">@Money.Fmt(t.BalanceCents)</span> }
+                                    else { <span class="muted">paid</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="grid cols-2">
+        <div class="card">
+            <div class="card-head"><h2>Payment history</h2></div>
+            @if (_payments.Count == 0)
+            {
+                <div class="empty"><div class="big">💵</div><div>No payments recorded.</div></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr><th>Date</th><th>Method</th><th>Ticket</th><th class="num">Amount</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _payments)
+                            {
+                                <tr>
+                                    <td class="tnum small">@FormatIso(p.PaidOn)</td>
+                                    <td class="small">@p.Method</td>
+                                    <td class="mono small">@(string.IsNullOrWhiteSpace(p.TicketNumber) ? "—" : p.TicketNumber)</td>
+                                    <td class="num money-pos">@Money.Fmt(p.AmountCents)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <h2>Pickups &amp; deliveries</h2>
+                <div class="spacer"></div>
+                <a class="btn btn-sm no-print" href="@($"/schedule?customerId={Id}")">Schedule one</a>
+            </div>
+            @if (_appointments.Count == 0)
+            {
+                <div class="empty"><div class="big">📅</div><div>Nothing scheduled.</div></div>
+            }
+            else
+            {
+                <div class="card-body">
+                    @foreach (var a in _appointments.Take(8))
+                    {
+                        <div class="appt @(a.Status == "Done" ? "done" : a.Status == "Canceled" ? "canceled" : "")">
+                            <div class="when">@(a.Start?.ToString("MMM d") ?? "—")</div>
+                            <div class="body">
+                                <div class="who">@a.Kind</div>
+                                <div class="meta">@(a.Start?.ToString("h:mm tt")) · @a.Status</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (_equipmentModalOpen)
+{
+    <Modal Title="@(_editEquipment.Id == 0 ? "Add equipment" : "Edit equipment")" OnClose="CloseEquipment">
+        <ChildContent>
+        <div class="form-grid">
+            <div class="field">
+                <label>Type</label>
+                <select @bind="_editEquipment.Category">
+                    @foreach (var cat in Equipment.Categories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>Year</label>
+                <input type="text" maxlength="4" @bind="_editEquipment.Year" />
+            </div>
+            <div class="field">
+                <label>Make</label>
+                <input type="text" placeholder="Honda, Toro, Husqvarna…" @bind="_editEquipment.Make" />
+            </div>
+            <div class="field">
+                <label>Model</label>
+                <input type="text" @bind="_editEquipment.Model" />
+            </div>
+            <div class="field span-2">
+                <label>Serial number</label>
+                <input type="text" @bind="_editEquipment.Serial" />
+            </div>
+            <div class="field">
+                <label>Engine make</label>
+                <input type="text" placeholder="Briggs &amp; Stratton, Kohler…" @bind="_editEquipment.EngineMake" />
+            </div>
+            <div class="field">
+                <label>Engine model</label>
+                <input type="text" @bind="_editEquipment.EngineModel" />
+            </div>
+            <div class="field span-2">
+                <label>Engine serial / code</label>
+                <input type="text" @bind="_editEquipment.EngineSerial" />
+            </div>
+            <div class="field span-2">
+                <label>Notes</label>
+                <textarea rows="3" placeholder="Deck size, known issues, customer's own parts…"
+                          @bind="_editEquipment.Notes"></textarea>
+            </div>
+            @if (_editEquipment.Id != 0)
+            {
+                <div class="field span-2">
+                    <label class="check">
+                        <input type="checkbox" @bind="_editEquipment.IsArchived" />
+                        Archived — customer no longer has this machine
+                    </label>
+                </div>
+            }
+        </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="CloseEquipment">Cancel</button>
+            <button class="btn btn-primary" @onclick="SaveEquipment">Save</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Customer? _customer;
+    private List<Equipment> _equipment = new();
+    private List<TicketRow> _tickets = new();
+    private List<PaymentRow> _payments = new();
+    private List<AppointmentRow> _appointments = new();
+    private long _billedCents, _paidCents;
+    private int _ticketCount;
+
+    private bool _equipmentModalOpen;
+    private Equipment _editEquipment = new();
+
+    protected override void OnParametersSet() => Load();
+
+    private void Load()
+    {
+        _customer = Customers.Get(Id);
+        if (_customer is null) return;
+
+        _equipment = Customers.EquipmentFor(Id, includeArchived: true);
+        _tickets = Tickets.ForCustomer(Id);
+        _payments = Payments.ForCustomer(Id);
+        _appointments = Schedule.ForCustomer(Id);
+
+        (_billedCents, _paidCents, _ticketCount) = Customers.LifetimeTotals(Id);
+    }
+
+    private int RepairCount(long equipmentId) => _tickets.Count(t => t.EquipmentId == equipmentId);
+
+    private void OpenEquipment(Equipment? existing)
+    {
+        _editEquipment = existing is null
+            ? new Equipment { CustomerId = Id }
+            : new Equipment
+            {
+                Id = existing.Id,
+                CustomerId = existing.CustomerId,
+                Category = existing.Category,
+                Make = existing.Make,
+                Model = existing.Model,
+                Serial = existing.Serial,
+                EngineMake = existing.EngineMake,
+                EngineModel = existing.EngineModel,
+                EngineSerial = existing.EngineSerial,
+                Year = existing.Year,
+                Notes = existing.Notes,
+                IsArchived = existing.IsArchived
+            };
+
+        _equipmentModalOpen = true;
+    }
+
+    private void CloseEquipment() => _equipmentModalOpen = false;
+
+    private void SaveEquipment()
+    {
+        if (_editEquipment.Id == 0) Customers.InsertEquipment(_editEquipment);
+        else Customers.UpdateEquipment(_editEquipment);
+
+        _equipmentModalOpen = false;
+        Load();
+    }
+
+    private static string Truncate(string? s, int max) =>
+        string.IsNullOrWhiteSpace(s) ? "—" : s.Length <= max ? s : s[..max].TrimEnd() + "…";
+
+    private static string FormatIso(string? iso) =>
+        DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d.ToString("MMM d, yyyy") : (iso ?? "—");
+
+    private static string FormatDate(string? utc) =>
+        DateTime.TryParse(utc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d)
+            ? d.ToLocalTime().ToString("MMM yyyy") : "—";
+}

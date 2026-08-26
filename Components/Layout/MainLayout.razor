@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="topbar no-print">
+            <div class="search-box">
+                <span class="ico">🔍</span>
+                <input type="search" placeholder="Search customers, tickets, phone numbers…"
+                       @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey" />
+            </div>
+            <div class="spacer"></div>
+            <div class="today">@DateTime.Now.ToString("dddd, MMMM d")</div>
+            <a class="btn btn-primary" href="/tickets/new">+ New Ticket</a>
+        </div>
+
+        <article class="content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string _search = "";
+
+    // Enter runs the search from anywhere in the app, which is how the counter actually works:
+    // the phone rings, you type a name, you hit enter.
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(_search)) return;
+        Nav.NavigateTo($"/customers?q={Uri.EscapeDataString(_search.Trim())}");
+    }
+}

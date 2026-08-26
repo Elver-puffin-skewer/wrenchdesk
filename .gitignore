@@ -1,0 +1,24 @@
+## Build output
+bin/
+obj/
+publish/
+build/output/
+*.user
+*.suo
+
+## Rider / VS / VS Code
+.vs/
+.idea/
+.vscode/
+
+## WrenchDesk data — never commit a shop's real records
+*.db
+*.db-wal
+*.db-shm
+Backups/
+appsettings.Local.json
+
+## OS noise
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,182 @@
+@page "/settings"
+@inject SettingsStore Settings
+@inject BackupService Backups
+@inject Db Database
+
+<PageTitle>Settings — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Settings</h1>
+        <p class="sub">Shop details, default rates, and where your data lives.</p>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="alert alert-ok">@_flash</div>
+}
+
+<div class="grid cols-2">
+    <div class="card">
+        <div class="card-head"><h2>Shop details</h2></div>
+        <div class="card-body">
+            <div class="muted small" style="margin-bottom:.9rem">These appear at the top of printed estimates and invoices.</div>
+
+            <div class="field">
+                <label>Shop name</label>
+                <input type="text" @bind="_values[SettingsStore.ShopName]" />
+            </div>
+            <div class="field">
+                <label>Address</label>
+                <textarea rows="3" @bind="_values[SettingsStore.ShopAddress]"></textarea>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label>Phone</label>
+                    <input type="tel" @bind="_values[SettingsStore.ShopPhone]" />
+                </div>
+                <div class="field">
+                    <label>Email</label>
+                    <input type="email" @bind="_values[SettingsStore.ShopEmail]" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head"><h2>Defaults</h2></div>
+        <div class="card-body">
+            <div class="form-grid">
+                <div class="field">
+                    <label>Labor rate (per hour)</label>
+                    <input type="text" @bind="_laborRate" />
+                    <div class="muted small" style="margin-top:.2rem">Prefills every labor line you add.</div>
+                </div>
+                <div class="field">
+                    <label>Sales tax %</label>
+                    <input type="text" @bind="_taxRate" />
+                    <div class="muted small" style="margin-top:.2rem">Applied to new tickets. Use 0 if you do not charge tax.</div>
+                </div>
+                <div class="field">
+                    <label>Ticket prefix</label>
+                    <input type="text" maxlength="6" @bind="_values[SettingsStore.TicketPrefix]" />
+                    <div class="muted small" style="margin-top:.2rem">Numbers look like @(_values[SettingsStore.TicketPrefix])-1042.</div>
+                </div>
+                <div class="field">
+                    <label>Week starts on</label>
+                    <select @bind="_values[SettingsStore.WeekStartDay]">
+                        @foreach (var d in Enum.GetNames<DayOfWeek>())
+                        {
+                            <option value="@d">@d</option>
+                        }
+                    </select>
+                    <div class="muted small" style="margin-top:.2rem">Controls the weekly money totals.</div>
+                </div>
+            </div>
+
+            <div class="field" style="margin-bottom:0">
+                <label>Estimate footer</label>
+                <textarea rows="3" @bind="_values[SettingsStore.EstimateFooter]"></textarea>
+                <div class="muted small" style="margin-top:.2rem">Printed at the bottom of estimates, above the signature line.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="btn-row" style="margin-bottom:1.5rem">
+    <button class="btn btn-primary btn-lg" @onclick="Save">Save settings</button>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Your data</h2>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" @onclick="BackupNow">Back up now</button>
+    </div>
+    <div class="card-body">
+        <dl class="kv">
+            <dt>Database file</dt>
+            <dd class="mono small">@Database.DatabasePath</dd>
+            <dt>Backups folder</dt>
+            <dd class="mono small">@Database.BackupDirectory</dd>
+            <dt>Size</dt>
+            <dd>@FormatSize(_dbSize)</dd>
+        </dl>
+
+        <div class="alert alert-info" style="margin-top:1rem">
+            Everything lives in that one database file. A backup runs automatically each day and the last
+            @BackupService.KeepCount are kept. To move the shop to a new PC, or to make an off-site copy,
+            just copy the file — that is the whole system.
+        </div>
+
+        @if (_backups.Count > 0)
+        {
+            <h3 style="margin-top:1.25rem">Recent backups</h3>
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr><th>File</th><th>Taken</th><th class="num">Size</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var b in _backups.Take(10))
+                        {
+                            <tr>
+                                <td class="mono small">@b.Name</td>
+                                <td class="small">@b.CreationTime.ToString("MMM d, yyyy h:mm tt")</td>
+                                <td class="num small">@FormatSize(b.Length)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private Dictionary<string, string> _values = new();
+    private string _laborRate = "";
+    private string _taxRate = "";
+    private string? _flash;
+    private List<FileInfo> _backups = new();
+    private long _dbSize;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        _values = Settings.GetAll();
+        _laborRate = (Settings.GetInt(SettingsStore.LaborRateCents) / 100m).ToString("0.00");
+        _taxRate = (Settings.GetInt(SettingsStore.TaxRateBp) / 100m).ToString("0.####");
+
+        _backups = Backups.ListBackups();
+        _dbSize = File.Exists(Database.DatabasePath) ? new FileInfo(Database.DatabasePath).Length : 0;
+    }
+
+    private void Save()
+    {
+        if (Money.TryParse(_laborRate, out var laborCents))
+            _values[SettingsStore.LaborRateCents] = laborCents.ToString();
+
+        var taxText = _taxRate.Replace("%", "").Trim();
+        if (decimal.TryParse(taxText, NumberStyles.Any, CultureInfo.InvariantCulture, out var pct))
+            _values[SettingsStore.TaxRateBp] = ((int)Math.Round(pct * 100m, MidpointRounding.AwayFromZero)).ToString();
+
+        Settings.SetAll(_values);
+        _flash = "Settings saved.";
+        Load();
+    }
+
+    private void BackupNow()
+    {
+        var path = Backups.CreateBackup("manual");
+        _flash = $"Backup written to {Path.GetFileName(path)}.";
+        Load();
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:0.0} MB"
+        : bytes >= 1024 ? $"{bytes / 1024d:0} KB"
+        : $"{bytes} bytes";
+}

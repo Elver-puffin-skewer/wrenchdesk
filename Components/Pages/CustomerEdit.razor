@@ -1,0 +1,164 @@
+@page "/customers/new"
+@page "/customers/{Id:long}/edit"
+@inject CustomerRepo Customers
+@inject NavigationManager Nav
+
+<PageTitle>@(IsNew ? "New Customer" : "Edit Customer") — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>@(IsNew ? "New customer" : $"Edit {_model.DisplayName}")</h1>
+        <p class="sub">Only a name is required — fill in the rest whenever you have it.</p>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="card">
+    <div class="card-head"><h2>Contact</h2></div>
+    <div class="card-body">
+        <div class="form-grid">
+            <div class="field">
+                <label>First name</label>
+                <input type="text" @bind="_model.FirstName" @bind:event="oninput" />
+            </div>
+            <div class="field">
+                <label>Last name</label>
+                <input type="text" @bind="_model.LastName" @bind:event="oninput" />
+            </div>
+            <div class="field span-2">
+                <label>Business name <span class="muted" style="text-transform:none">(commercial accounts)</span></label>
+                <input type="text" @bind="_model.BusinessName" @bind:event="oninput" />
+            </div>
+            <div class="field">
+                <label>Phone</label>
+                <input type="tel" @bind="_model.Phone" @bind:event="oninput" />
+            </div>
+            <div class="field">
+                <label>Other phone</label>
+                <input type="tel" @bind="_model.PhoneAlt" @bind:event="oninput" />
+            </div>
+            <div class="field span-2">
+                <label>Email</label>
+                <input type="email" @bind="_model.Email" @bind:event="oninput" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Address</h2>
+        <div class="spacer"></div>
+        <span class="muted small">Used for pickups and deliveries</span>
+    </div>
+    <div class="card-body">
+        <div class="form-grid">
+            <div class="field span-2">
+                <label>Street</label>
+                <input type="text" @bind="_model.Address1" @bind:event="oninput" />
+            </div>
+            <div class="field span-2">
+                <label>Apt / unit / directions</label>
+                <input type="text" @bind="_model.Address2" @bind:event="oninput" />
+            </div>
+            <div class="field">
+                <label>City</label>
+                <input type="text" @bind="_model.City" @bind:event="oninput" />
+            </div>
+            <div class="field">
+                <div class="form-grid" style="gap:0 .6rem">
+                    <div>
+                        <label class="lbl">State</label>
+                        <input type="text" maxlength="2" @bind="_model.State" @bind:event="oninput" />
+                    </div>
+                    <div>
+                        <label class="lbl">ZIP</label>
+                        <input type="text" maxlength="10" @bind="_model.Zip" @bind:event="oninput" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Notes</h2></div>
+    <div class="card-body">
+        <textarea rows="4" placeholder="Gate code, best time to call, dog in the yard…"
+                  @bind="_model.Notes" @bind:event="oninput"></textarea>
+
+        @if (!IsNew)
+        {
+            <label class="check" style="margin-top:.9rem">
+                <input type="checkbox" @bind="_model.IsArchived" />
+                Archived — hide from the customer list, but keep all history
+            </label>
+        }
+    </div>
+</div>
+
+<div class="btn-row no-print" style="margin-bottom:2rem">
+    <button class="btn btn-primary btn-lg" @onclick="Save">Save customer</button>
+    <button class="btn" @onclick="Cancel">Cancel</button>
+</div>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "name")]
+    public string? PrefillName { get; set; }
+
+    private Customer _model = new();
+    private string? _error;
+
+    private bool IsNew => Id is null;
+
+    protected override void OnParametersSet()
+    {
+        if (Id is not null)
+        {
+            _model = Customers.Get(Id.Value) ?? new Customer();
+            return;
+        }
+
+        // Coming from a failed search — carry the words they already typed into the name fields.
+        if (!string.IsNullOrWhiteSpace(PrefillName) && string.IsNullOrWhiteSpace(_model.FirstName)
+            && string.IsNullOrWhiteSpace(_model.LastName))
+        {
+            var parts = PrefillName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            _model.FirstName = parts.ElementAtOrDefault(0) ?? "";
+            _model.LastName = parts.ElementAtOrDefault(1) ?? "";
+        }
+    }
+
+    private void Save()
+    {
+        var hasName = !string.IsNullOrWhiteSpace(_model.FirstName)
+                   || !string.IsNullOrWhiteSpace(_model.LastName)
+                   || !string.IsNullOrWhiteSpace(_model.BusinessName);
+
+        if (!hasName)
+        {
+            _error = "Enter a first name, last name, or business name.";
+            return;
+        }
+
+        if (IsNew)
+        {
+            var newId = Customers.Insert(_model);
+            Nav.NavigateTo($"/customers/{newId}");
+        }
+        else
+        {
+            Customers.Update(_model);
+            Nav.NavigateTo($"/customers/{_model.Id}");
+        }
+    }
+
+    private void Cancel() =>
+        Nav.NavigateTo(IsNew ? "/customers" : $"/customers/{Id}");
+}

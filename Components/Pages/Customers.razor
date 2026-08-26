@@ -1,0 +1,108 @@
+@page "/customers"
+@inject CustomerRepo Repo
+@inject NavigationManager Nav
+
+<PageTitle>Customers — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Customers</h1>
+        <p class="sub">@_results.Count shown@(_results.Count >= 500 ? " (first 500 — narrow your search)" : "")</p>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn btn-primary" href="/customers/new">+ New Customer</a>
+</div>
+
+<div class="filters no-print">
+    <div class="search-box" style="max-width:420px">
+        <span class="ico">🔍</span>
+        <input type="search" placeholder="Name, business, phone, address…"
+               value="@_query" @oninput="OnQueryInput" />
+    </div>
+    <label class="check" style="padding-bottom:.5rem">
+        <input type="checkbox" checked="@_includeArchived" @onchange="OnArchivedToggle" />
+        Show archived
+    </label>
+</div>
+
+<div class="card">
+    @if (_results.Count == 0)
+    {
+        <div class="empty">
+            <div class="big">👤</div>
+            @if (string.IsNullOrWhiteSpace(_query))
+            {
+                <div>No customers yet.</div>
+                <div style="margin-top:.75rem"><a class="btn btn-primary btn-sm" href="/customers/new">Add the first one</a></div>
+            }
+            else
+            {
+                <div>Nothing matches &ldquo;@_query&rdquo;.</div>
+                <div style="margin-top:.75rem">
+                    <a class="btn btn-primary btn-sm" href="@($"/customers/new?name={Uri.EscapeDataString(_query)}")">
+                        Add &ldquo;@_query&rdquo; as a new customer
+                    </a>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Address</th>
+                        <th class="shrink"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _results)
+                    {
+                        <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/customers/{c.Id}"))">
+                            <td class="strong">
+                                @c.DisplayName
+                                @if (c.IsArchived) { <span class="chip" style="margin-left:.4rem">Archived</span> }
+                            </td>
+                            <td class="tnum">@(string.IsNullOrWhiteSpace(c.Phone) ? "—" : c.Phone)</td>
+                            <td class="muted small">@(c.HasAddress ? c.OneLineAddress : "—")</td>
+                            <td class="shrink"><span class="muted">›</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "q")]
+    public string? QueryFromUrl { get; set; }
+
+    private string _query = "";
+    private bool _includeArchived;
+    private List<Customer> _results = new();
+
+    protected override void OnParametersSet()
+    {
+        // The topbar search navigates here with ?q=, so keep the box and the URL in step.
+        _query = QueryFromUrl ?? "";
+        Load();
+    }
+
+    private void Load() => _results = Repo.Search(_query, _includeArchived);
+
+    private void OnQueryInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        Load();
+    }
+
+    private void OnArchivedToggle(ChangeEventArgs e)
+    {
+        _includeArchived = e.Value is bool b && b;
+        Load();
+    }
+}

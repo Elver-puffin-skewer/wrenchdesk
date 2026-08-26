@@ -1,0 +1,204 @@
+@page "/"
+@inject TicketRepo Tickets
+@inject MoneyRepo Payments
+@inject ScheduleRepo Schedule
+@inject SettingsStore Settings
+
+<PageTitle>Dashboard — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>@_shopName</h1>
+        <p class="sub">@DateTime.Now.ToString("dddd, MMMM d, yyyy")</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+        <a class="btn" href="/customers/new">+ Customer</a>
+        <a class="btn btn-primary" href="/tickets/new">+ New Ticket</a>
+    </div>
+</div>
+
+<div class="grid cols-4" style="margin-bottom:1.25rem">
+    <div class="stat accent">
+        <div class="label">Money in today</div>
+        <div class="value">@Money.Fmt(_todayCents)</div>
+        <div class="foot">@_todayCount payment@(_todayCount == 1 ? "" : "s")</div>
+    </div>
+    <div class="stat good">
+        <div class="label">This week</div>
+        <div class="value">@Money.Fmt(_weekCents)</div>
+        <div class="foot">@_weekRangeLabel</div>
+    </div>
+    <div class="stat">
+        <div class="label">Open tickets</div>
+        <div class="value">@_openTickets.Count</div>
+        <div class="foot">@_readyCount ready for pickup</div>
+    </div>
+    <div class="stat owed">
+        <div class="label">Still owed</div>
+        <div class="value">@Money.Fmt(_outstandingCents)</div>
+        <div class="foot">across all unpaid tickets</div>
+    </div>
+</div>
+
+<div class="grid cols-2">
+    <div>
+        <div class="card">
+            <div class="card-head">
+                <h2>Today's pickups &amp; deliveries</h2>
+                <div class="spacer"></div>
+                <a class="btn btn-sm" href="/schedule">Full schedule</a>
+            </div>
+
+            @if (_todayAppts.Count == 0)
+            {
+                <div class="empty">
+                    <div class="big">📅</div>
+                    <div>Nothing scheduled for today.</div>
+                </div>
+            }
+            else
+            {
+                <div class="card-body">
+                    @foreach (var a in _todayAppts)
+                    {
+                        <div class="appt @KindClass(a.Kind) @(a.Status == "Done" ? "done" : a.Status == "Canceled" ? "canceled" : "")">
+                            <div class="when">@(a.Start?.ToString("h:mm tt") ?? "—")</div>
+                            <div class="body">
+                                <div class="who">@a.Kind — @a.CustomerName</div>
+                                <div class="meta">
+                                    @if (!string.IsNullOrWhiteSpace(a.Address)) { <span>@a.Address</span> }
+                                    @if (!string.IsNullOrWhiteSpace(a.CustomerPhone)) { <span> · @a.CustomerPhone</span> }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <h2>Last 8 weeks</h2>
+                <div class="spacer"></div>
+                <a class="btn btn-sm" href="/money">Money detail</a>
+            </div>
+            <div class="card-body">
+                @if (_weeks.All(w => w.TotalCents == 0))
+                {
+                    <div class="muted small">No payments recorded yet. They will chart here as you take money in.</div>
+                }
+                else
+                {
+                    var peak = Math.Max(1, _weeks.Max(w => w.TotalCents));
+                    <div class="bars">
+                        @foreach (var w in _weeks)
+                        {
+                            <div class="bar-col" title="@w.Label: @Money.Fmt(w.TotalCents)">
+                                <div class="bar @(w.TotalCents == 0 ? "zero" : "")"
+                                     style="height:@(Math.Max(2, w.TotalCents * 100 / peak))%"></div>
+                            </div>
+                        }
+                    </div>
+                    <div class="bar-labels">
+                        @foreach (var w in _weeks)
+                        {
+                            <div>@w.StartOn.Substring(5).Replace("-", "/")</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <h2>On the bench</h2>
+            <div class="spacer"></div>
+            <a class="btn btn-sm" href="/tickets">All tickets</a>
+        </div>
+
+        @if (_openTickets.Count == 0)
+        {
+            <div class="empty">
+                <div class="big">🔧</div>
+                <div>No open tickets.</div>
+                <div style="margin-top:.75rem"><a class="btn btn-primary btn-sm" href="/tickets/new">Write one up</a></div>
+            </div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Customer</th>
+                            <th>Equipment</th>
+                            <th>Status</th>
+                            <th class="num">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _openTickets.Take(12))
+                        {
+                            <tr style="cursor:pointer" @onclick="@(() => Go($"/tickets/{t.Id}"))">
+                                <td class="strong mono">@t.Number</td>
+                                <td>@t.CustomerName</td>
+                                <td class="muted small">@(string.IsNullOrWhiteSpace(t.EquipmentName) ? "—" : t.EquipmentName)</td>
+                                <td><StatusBadge Status="@t.Status" /></td>
+                                <td class="num">@Money.Fmt(t.TotalCents)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string _shopName = "WrenchDesk";
+    private long _todayCents, _weekCents, _outstandingCents;
+    private int _todayCount, _readyCount;
+    private string _weekRangeLabel = "";
+    private List<TicketRow> _openTickets = new();
+    private List<AppointmentRow> _todayAppts = new();
+    private List<MoneyBucket> _weeks = new();
+
+    protected override void OnInitialized()
+    {
+        var today = DateTime.Now;
+
+        _shopName = Settings.Get(SettingsStore.ShopName);
+
+        _todayCents = Payments.TotalForDay(today);
+        _todayCount = Payments.InRange(today, today).Count;
+
+        var (weekFrom, weekTo) = Payments.WeekRange(today);
+        _weekCents = Payments.TotalInRange(weekFrom, weekTo);
+        _weekRangeLabel = $"{weekFrom:MMM d} – {weekTo:MMM d}";
+
+        _outstandingCents = Payments.OutstandingCents();
+
+        _openTickets = Tickets.OpenBoard();
+        _readyCount = _openTickets.Count(t => t.Status == TicketStatus.Ready);
+
+        _todayAppts = Schedule.ForDay(today);
+
+        // Oldest week first so the chart reads left to right.
+        _weeks = Payments.WeeklyBuckets(8);
+        _weeks.Reverse();
+    }
+
+    private void Go(string url) => Nav.NavigateTo(url);
+
+    private static string KindClass(string kind) => kind switch
+    {
+        "Pickup" => "kind-pickup",
+        "Delivery" => "kind-delivery",
+        _ => "kind-other"
+    };
+}

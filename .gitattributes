@@ -1,0 +1,15 @@
+# Normalise line endings so the repo stays consistent across machines.
+* text=auto
+
+*.cs      text diff=csharp
+*.razor   text
+*.css     text
+*.json    text
+*.md      text
+*.yml     text
+*.ps1     text eol=crlf
+*.sln     text eol=crlf
+*.csproj  text
+
+*.png     binary
+*.db      binary

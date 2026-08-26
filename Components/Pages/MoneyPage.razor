@@ -1,0 +1,444 @@
+@page "/money"
+@inject MoneyRepo Repo
+@inject CustomerRepo Customers
+@inject SettingsStore Settings
+
+<PageTitle>Money — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Money</h1>
+        <p class="sub">What actually came in the door, by day and by week.</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+        <a class="btn" href="@($"/export/payments.csv?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")">⬇ Export CSV</a>
+        <button class="btn btn-primary" @onclick="() => OpenPayment(null)">+ Record payment</button>
+    </div>
+</div>
+
+<div class="grid cols-4" style="margin-bottom:1.25rem">
+    <div class="stat accent">
+        <div class="label">Today</div>
+        <div class="value">@Money.Fmt(_todayCents)</div>
+    </div>
+    <div class="stat good">
+        <div class="label">This week</div>
+        <div class="value">@Money.Fmt(_thisWeekCents)</div>
+        <div class="foot">@_thisWeekLabel</div>
+    </div>
+    <div class="stat">
+        <div class="label">Last week</div>
+        <div class="value">@Money.Fmt(_lastWeekCents)</div>
+        <div class="foot">@ChangeLabel()</div>
+    </div>
+    <div class="stat owed">
+        <div class="label">Still owed</div>
+        <div class="value">@Money.Fmt(_outstandingCents)</div>
+        <div class="foot">unpaid ticket balances</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Weekly totals</h2>
+        <div class="spacer"></div>
+        <span class="muted small">Week starts @Settings.GetWeekStart()</span>
+    </div>
+    <div class="card-body">
+        @if (_weeks.All(w => w.TotalCents == 0))
+        {
+            <div class="muted small">No payments recorded yet.</div>
+        }
+        else
+        {
+            var peak = Math.Max(1, _weeks.Max(w => w.TotalCents));
+            <div class="bars">
+                @foreach (var w in _weeks)
+                {
+                    <div class="bar-col" title="@w.Label: @Money.Fmt(w.TotalCents)">
+                        <div class="bar @(w.TotalCents == 0 ? "zero" : "")"
+                             style="height:@(Math.Max(2, w.TotalCents * 100 / peak))%"></div>
+                    </div>
+                }
+            </div>
+            <div class="bar-labels">
+                @foreach (var w in _weeks)
+                {
+                    <div>@w.StartOn.Substring(5).Replace("-", "/")</div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="table-wrap" style="border-top:1px solid var(--line-2)">
+        <table class="data">
+            <thead>
+                <tr><th>Week</th><th class="num">Payments</th><th class="num">Total</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var w in Enumerable.Reverse(_weeks))
+                {
+                    <tr>
+                        <td class="strong">@w.Label</td>
+                        <td class="num muted">@w.PaymentCount</td>
+                        <td class="num strong">@Money.Fmt(w.TotalCents)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Payment log</h2>
+        <div class="spacer"></div>
+        <span class="muted small">@_payments.Count payment@(_payments.Count == 1 ? "" : "s") · @Money.Fmt(_payments.Sum(p => p.AmountCents))</span>
+    </div>
+
+    <div class="card-body" style="border-bottom:1px solid var(--line-2)">
+        <div class="filters no-print" style="margin:0">
+            <div class="field">
+                <label>From</label>
+                <input type="date" @bind="_from" @bind:after="Load" />
+            </div>
+            <div class="field">
+                <label>To</label>
+                <input type="date" @bind="_to" @bind:after="Load" />
+            </div>
+            <div class="field">
+                <label>&nbsp;</label>
+                <div class="btn-row">
+                    <button class="btn btn-sm" @onclick="() => SetRange(0)">Today</button>
+                    <button class="btn btn-sm" @onclick="() => SetRange(7)">7 days</button>
+                    <button class="btn btn-sm" @onclick="() => SetRange(30)">30 days</button>
+                    <button class="btn btn-sm" @onclick="() => SetRange(365)">Year</button>
+                </div>
+            </div>
+        </div>
+
+        @if (_byMethod.Count > 0)
+        {
+            <div class="btn-row" style="margin-top:.9rem">
+                @foreach (var m in _byMethod)
+                {
+                    <span class="chip">@m.Method: <strong>@Money.Fmt(m.TotalCents)</strong> (@m.Count)</span>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_payments.Count == 0)
+    {
+        <div class="empty">
+            <div class="big">💵</div>
+            <div>No payments in this range.</div>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Ticket</th>
+                        <th>Method</th>
+                        <th>Ref / note</th>
+                        <th class="num">Amount</th>
+                        <th class="shrink no-print"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in _payments)
+                    {
+                        var pay = p;
+                        <tr>
+                            <td class="tnum small">@FormatIso(p.PaidOn)</td>
+                            <td>
+                                @if (p.CustomerId is not null)
+                                {
+                                    <a href="@($"/customers/{p.CustomerId}")">@p.CustomerName</a>
+                                }
+                                else
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+                            <td class="mono small">
+                                @if (p.TicketId is not null)
+                                {
+                                    <a href="@($"/tickets/{p.TicketId}")">@p.TicketNumber</a>
+                                }
+                                else
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+                            <td class="small">@p.Method</td>
+                            <td class="small muted">@($"{p.Reference} {p.Note}".Trim())</td>
+                            <td class="num money-pos">@Money.Fmt(p.AmountCents)</td>
+                            <td class="shrink no-print">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenPayment(pay.Id)">Edit</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Day by day</h2></div>
+    <div class="table-wrap">
+        <table class="data">
+            <thead>
+                <tr><th>Day</th><th class="num">Payments</th><th class="num">Total</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var d in Enumerable.Reverse(_days).Where(d => d.PaymentCount > 0))
+                {
+                    <tr>
+                        <td>@d.Label</td>
+                        <td class="num muted">@d.PaymentCount</td>
+                        <td class="num strong">@Money.Fmt(d.TotalCents)</td>
+                    </tr>
+                }
+                @if (_days.All(d => d.PaymentCount == 0))
+                {
+                    <tr><td colspan="3" class="muted">No takings in this range.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (_paymentModalOpen)
+{
+    <Modal Title="@(_editing.Id == 0 ? "Record a payment" : "Edit payment")" OnClose="() => _paymentModalOpen = false">
+        <ChildContent>
+            <div class="field">
+                <label>Customer</label>
+                @if (_selectedCustomer is not null)
+                {
+                    <div class="row-between" style="border:1px solid var(--line);border-radius:6px;padding:.5rem .7rem">
+                        <div class="strong">@_selectedCustomer.DisplayName</div>
+                        <button class="btn btn-sm" @onclick="ClearCustomer">Change</button>
+                    </div>
+                }
+                else
+                {
+                    <input type="search" placeholder="Search, or leave blank for a walk-in sale…"
+                           value="@_customerQuery" @oninput="OnCustomerSearch" />
+                    @if (_customerMatches.Count > 0)
+                    {
+                        <div class="table-wrap" style="margin-top:.5rem;border:1px solid var(--line);border-radius:6px">
+                            <table class="data">
+                                <tbody>
+                                    @foreach (var c in _customerMatches.Take(6))
+                                    {
+                                        var cust = c;
+                                        <tr style="cursor:pointer" @onclick="() => PickCustomer(cust)">
+                                            <td class="strong">@c.DisplayName</td>
+                                            <td class="tnum small">@c.Phone</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>Amount</label>
+                    <input type="text" @bind="_payAmount" />
+                </div>
+                <div class="field">
+                    <label>Method</label>
+                    <select @bind="_editing.Method">
+                        @foreach (var m in Payment.Methods)
+                        {
+                            <option value="@m">@m</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Date</label>
+                    <input type="date" @bind="_payDate" />
+                </div>
+                <div class="field">
+                    <label>Check # / reference</label>
+                    <input type="text" @bind="_editing.Reference" />
+                </div>
+                <div class="field span-2">
+                    <label>Note</label>
+                    <input type="text" placeholder="Blade sharpening, oil sale, deposit…" @bind="_editing.Note" />
+                </div>
+            </div>
+
+            @if (_editing.TicketId is not null)
+            {
+                <div class="alert alert-info" style="margin:0">
+                    Attached to ticket <a href="@($"/tickets/{_editing.TicketId}")">#@_editing.TicketId</a>.
+                </div>
+            }
+
+            @if (_payError is not null)
+            {
+                <div class="alert alert-danger" style="margin:.75rem 0 0">@_payError</div>
+            }
+        </ChildContent>
+        <Footer>
+            @if (_editing.Id != 0)
+            {
+                <button class="btn btn-danger" @onclick="DeletePayment">Delete</button>
+            }
+            <button class="btn" @onclick="() => _paymentModalOpen = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="SavePayment">Save</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private DateTime _from = DateTime.Today.AddDays(-30);
+    private DateTime _to = DateTime.Today;
+
+    private long _todayCents, _thisWeekCents, _lastWeekCents, _outstandingCents;
+    private string _thisWeekLabel = "";
+    private List<MoneyBucket> _weeks = new();
+    private List<MoneyBucket> _days = new();
+    private List<PaymentRow> _payments = new();
+    private List<(string Method, long TotalCents, int Count)> _byMethod = new();
+
+    private bool _paymentModalOpen;
+    private Payment _editing = new();
+    private string _payAmount = "";
+    private DateTime _payDate = DateTime.Today;
+    private Customer? _selectedCustomer;
+    private string _customerQuery = "";
+    private List<Customer> _customerMatches = new();
+    private string? _payError;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        var today = DateTime.Now.Date;
+
+        _todayCents = Repo.TotalForDay(today);
+
+        var (weekFrom, weekTo) = Repo.WeekRange(today);
+        _thisWeekCents = Repo.TotalInRange(weekFrom, weekTo);
+        _thisWeekLabel = $"{weekFrom:MMM d} – {weekTo:MMM d}";
+
+        var lastWeekStart = weekFrom.AddDays(-7);
+        _lastWeekCents = Repo.TotalInRange(lastWeekStart, lastWeekStart.AddDays(6));
+
+        _outstandingCents = Repo.OutstandingCents();
+
+        // Oldest first so the chart reads left to right.
+        _weeks = Repo.WeeklyBuckets(12);
+        _weeks.Reverse();
+
+        if (_to < _from) _to = _from;
+        _payments = Repo.InRange(_from, _to);
+        _byMethod = Repo.ByMethod(_from, _to);
+        _days = Repo.DailyBuckets(_from, _to);
+    }
+
+    private void SetRange(int daysBack)
+    {
+        _to = DateTime.Today;
+        _from = DateTime.Today.AddDays(-daysBack);
+        Load();
+    }
+
+    private string ChangeLabel()
+    {
+        if (_lastWeekCents == 0) return "no comparison yet";
+        var diff = _thisWeekCents - _lastWeekCents;
+        var pct = (int)Math.Round(diff * 100m / _lastWeekCents);
+        return diff >= 0 ? $"this week is up {pct}%" : $"this week is down {Math.Abs(pct)}%";
+    }
+
+    // ---- Payment editor ----
+
+    private void OpenPayment(long? id)
+    {
+        _payError = null;
+        _customerQuery = "";
+        _customerMatches = new();
+
+        if (id is null)
+        {
+            _editing = new Payment { Method = "Cash" };
+            _payAmount = "";
+            _payDate = DateTime.Today;
+            _selectedCustomer = null;
+        }
+        else
+        {
+            _editing = Repo.Get(id.Value) ?? new Payment();
+            _payAmount = (_editing.AmountCents / 100m).ToString("0.00");
+            _payDate = DateTime.TryParse(_editing.PaidOn, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+                ? d : DateTime.Today;
+            _selectedCustomer = _editing.CustomerId is null ? null : Customers.Get(_editing.CustomerId.Value);
+        }
+
+        _paymentModalOpen = true;
+    }
+
+    private void OnCustomerSearch(ChangeEventArgs e)
+    {
+        _customerQuery = e.Value?.ToString() ?? "";
+        _customerMatches = string.IsNullOrWhiteSpace(_customerQuery) ? new() : Customers.Search(_customerQuery);
+    }
+
+    private void PickCustomer(Customer c)
+    {
+        _selectedCustomer = c;
+        _editing.CustomerId = c.Id;
+        _customerQuery = "";
+        _customerMatches = new();
+    }
+
+    private void ClearCustomer()
+    {
+        _selectedCustomer = null;
+        _editing.CustomerId = null;
+    }
+
+    private void SavePayment()
+    {
+        if (!Money.TryParse(_payAmount, out var cents) || cents == 0)
+        {
+            _payError = "Enter an amount, like 85 or 85.50.";
+            return;
+        }
+
+        _editing.AmountCents = cents;
+        _editing.PaidOn = _payDate.ToString("yyyy-MM-dd");
+
+        if (_editing.Id == 0) Repo.Insert(_editing);
+        else Repo.Update(_editing);
+
+        _paymentModalOpen = false;
+        Load();
+    }
+
+    private void DeletePayment()
+    {
+        if (_editing.Id != 0) Repo.Delete(_editing.Id);
+        _paymentModalOpen = false;
+        Load();
+    }
+
+    private static string FormatIso(string? iso) =>
+        DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d.ToString("ddd M/d/yy") : (iso ?? "—");
+}
