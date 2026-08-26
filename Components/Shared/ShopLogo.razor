@@ -12,11 +12,14 @@
 }
 else if (Variant == LogoVariant.Mark)
 {
+    @* Vector, so the monogram stays sharp at sidebar size where a 32px bitmap would not. *@
     <svg viewBox="0 0 64 64" role="img" aria-label="@Alt" style="@ImgStyle">
         <polygon points="32,3 58,17 58,47 32,61 6,47 6,17" fill="#f7f2dd" />
         <polygon points="32,7 54,19 54,45 32,57 10,45 10,19" fill="#16233d" />
-        <text x="32" y="41" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
-              font-size="30" font-weight="bold" fill="#c8202a">E</text>
+        @* textLength pins the width so a substituted fallback font cannot spill over the badge. *@
+        <text x="32" y="39" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+              font-size="17" font-weight="bold" fill="#c8202a"
+              textLength="34" lengthAdjust="spacingAndGlyphs">WSE</text>
     </svg>
 }
 else

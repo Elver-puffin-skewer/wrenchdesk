@@ -93,7 +93,7 @@ a:hover { text-decoration: underline; }
 }
 .brand:hover { text-decoration: none; }
 .brand .mark {
-    width: 30px; height: 30px;
+    width: 34px; height: 34px;
     display: grid; place-items: center;
     flex: 0 0 auto;
 }
