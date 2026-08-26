@@ -42,40 +42,67 @@ Scheduled backups are **off until you turn them on**. See [Backups](#backups) be
 
 ---
 
-## Running it on the shop PC
+## Installing it on the shop PC
 
-Grab the latest build (or produce one with `build\publish.ps1` — see *Building* below), copy the
-folder to the shop PC, and double-click **`Install WrenchDesk.cmd`**.
+Go to the [**Releases**](https://github.com/Elver-puffin-skewer/wrenchdesk/releases) page, download
+**`WrenchDesk.exe`**, and double-click it.
 
-That copies the program somewhere permanent and creates:
+That is the whole install. One file, nothing else to download, nothing else to install — no .NET, no
+runtime, no setup wizard. The first time you run it, it asks:
 
-- a **desktop icon** with the shop badge,
-- a **Start menu entry**, so it turns up when you press Start and type "wrench",
-- optionally, a **start-with-Windows** entry — it asks.
+```
+  WrenchDesk is not set up on this PC yet.
 
-It installs under your own user account, so there's no administrator prompt, and it never touches
-your shop data. Reinstalling over the top to update is safe: customers, tickets and payments live in
-`Documents\WrenchDesk`, not in the program folder.
+  Setting up will:
+    - copy the program to your account so it stays put
+    - put a WrenchDesk icon on your desktop
+    - add it to the Start menu
 
-**`Uninstall WrenchDesk.cmd`** removes the shortcuts and the program, and again leaves your data
-alone.
+  Set up WrenchDesk now? [Y/n]
+```
+
+Press Enter. It copies itself somewhere permanent, makes the shortcuts, and starts. From then on you
+open it from the desktop icon and never see that question again.
+
+It installs under your own user account, so there is **no administrator prompt**.
+
+> **Windows will warn you** that the publisher is unknown, because the file is not code-signed
+> (a certificate costs a few hundred dollars a year). Choose **More info** then **Run anyway**.
+
+### Updating
+
+Download the new `WrenchDesk.exe` and run it again. Your customers, tickets and payments live in
+`Documents\WrenchDesk` and are never touched by an update.
+
+### Removing it
+
+```
+WrenchDesk.exe --uninstall
+```
+
+Removes the shortcuts and the program. Your shop data is left alone.
+
+### Other ways to run it
+
+| Command | What it does |
+| --- | --- |
+| `WrenchDesk.exe` | Normal. Sets up on first run, then just opens. |
+| `WrenchDesk.exe --portable` | Runs where it sits and never installs — for a USB stick. |
+| `WrenchDesk.exe --install` | Sets up without being asked. |
+| `WrenchDesk.exe --uninstall` | Removes shortcuts and the program. |
 
 ### Pinning it to the taskbar
 
 Windows does not let a program pin itself to the taskbar — Microsoft closed that off in Windows 10
-and tightened it further in Windows 11, where even *Pin to Start* is refused to installers. The
-installer tries anyway (it still works on older machines) and tells you if it couldn't.
-
-So this one step is manual, and takes a single right-click:
+and tightened it further in Windows 11, where even *Pin to Start* is refused to installers. So this
+one step is manual, and takes a single right-click:
 
 > Right-click the desktop icon → **Show more options** → **Pin to taskbar**
 
 Or press Start, type *WrenchDesk*, right-click the result and choose **Pin to taskbar**. Dragging
 the desktop icon onto the taskbar works too.
 
-### Running it without installing
-
-You can still just double-click **WrenchDesk.exe** in the folder. Nothing is set up, but it runs.
+### What you see when it runs
 
 A console window opens and prints something like:
 
@@ -103,8 +130,8 @@ itself.)
 
 ### Starting it automatically with Windows
 
-The installer offers this. To change your mind later, press `Win+R`, type `shell:startup`, press
-Enter, and add or remove the WrenchDesk shortcut in the folder that opens.
+Setup offers this on first run. To change your mind later, press `Win+R`, type `shell:startup`,
+press Enter, and add or remove the WrenchDesk shortcut in the folder that opens.
 
 ---
 
@@ -119,8 +146,9 @@ Documents\WrenchDesk\wrenchdesk.db
 To move the shop to a new PC, or to keep an off-site copy, copy that file. That's the whole system —
 there is no separate database server to install or configure.
 
-To put the data somewhere else (a synced folder, a NAS, a second drive), edit `appsettings.json`
-next to the exe:
+The program is a single file with its defaults compiled in, so there is no config file unless you
+want one. To change a setting, create `appsettings.json` next to `WrenchDesk.exe`
+(`%LOCALAPPDATA%\WrenchDesk`):
 
 ```json
 {
@@ -205,15 +233,18 @@ the whole app follows.
 ### Using the real logo artwork
 
 Out of the box the app draws its own badge in those colours, so it looks right with nothing to
-install. To use the actual sign artwork instead, drop the image in as:
+install. To use the actual sign artwork instead, drop the image into your data folder as:
 
 ```
-wwwroot\logo.png
+Documents\WrenchDesk\logo.png
 ```
 
 It is picked up automatically — in the sidebar and at the top of every printed estimate and invoice
-— with no code change and no restart needed. A transparent PNG around 600px wide works well. Remove
-the file and it falls back to the drawn badge.
+— with no restart needed. A transparent PNG around 600px wide works well. Remove the file and it
+falls back to the drawn badge.
+
+It sits with your data rather than beside the program on purpose: updating WrenchDesk never loses
+it, and a backup of the data folder carries the branding too.
 
 ---
 

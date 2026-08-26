@@ -13,3 +13,7 @@
 
 *.png     binary
 *.db      binary
+
+# Batch files must keep CRLF or cmd.exe can mis-parse them when unpacked from a zip.
+*.cmd     text eol=crlf
+*.bat     text eol=crlf

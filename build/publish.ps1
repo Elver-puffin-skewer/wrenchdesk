@@ -56,9 +56,18 @@ if ($LASTEXITCODE -ne 0) {
 # The published folder carries a debug symbols file that the shop does not need.
 Get-ChildItem $OutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
 
-# Ship the installer alongside the program, so the folder handed to the shop is self-contained.
-foreach ($file in @('install.ps1', 'uninstall.ps1', 'Install WrenchDesk.cmd', 'Uninstall WrenchDesk.cmd')) {
-    Copy-Item (Join-Path $scriptDir $file) -Destination $OutputDir -Force
+# Everything left here is already compiled into the .exe: appsettings.json only repeats defaults
+# that live in code, and wwwroot is embedded as resources. Removing them is what makes the thing
+# handed to the shop a single file rather than a folder they have to keep together.
+foreach ($leftover in @('appsettings.json', 'appsettings.Development.json', 'web.config')) {
+    Remove-Item (Join-Path $OutputDir $leftover) -Force -ErrorAction SilentlyContinue
+}
+Remove-Item (Join-Path $OutputDir 'wwwroot') -Recurse -Force -ErrorAction SilentlyContinue
+
+$stray = Get-ChildItem $OutputDir | Where-Object { $_.Name -ne 'WrenchDesk.exe' }
+if ($stray) {
+    Write-Warning "Publish left files beside the .exe, so it is no longer self-contained:"
+    $stray | ForEach-Object { Write-Warning "  $($_.Name)" }
 }
 
 $exe = Join-Path $OutputDir 'WrenchDesk.exe'
@@ -68,6 +77,6 @@ Write-Host ''
 Write-Host '  Done.' -ForegroundColor Green
 Write-Host "  Program:  $exe  ($sizeMb MB)"
 Write-Host ''
-Write-Host '  Copy the whole output folder to the shop PC, then double-click'
-Write-Host '  "Install WrenchDesk.cmd" to set up the desktop and Start menu shortcuts.'
+Write-Host '  That one file is everything. Give WrenchDesk.exe to the shop and double-click it —'
+Write-Host '  it sets itself up, makes the desktop icon, and starts.'
 Write-Host ''

@@ -8,7 +8,17 @@ using WrenchDesk.Data;
 using WrenchDesk.Services;
 using WrenchDesk.Services.Google;
 
-var builder = WebApplication.CreateBuilder(args);
+// Setup runs before anything else: this single .exe is also its own installer, so the shop
+// downloads one file and double-clicks it. Returns true when there is nothing left to do here —
+// the work is finished, or the freshly installed copy has taken over.
+if (SelfInstall.HandleStartup(args)) return;
+
+// Our own switches are not configuration keys, and the command-line provider rejects bare flags.
+var hostArgs = args
+    .Where(a => !SelfInstall.SetupFlags.Contains(a.TrimStart('-', '/').ToLowerInvariant()))
+    .ToArray();
+
+var builder = WebApplication.CreateBuilder(hostArgs);
 
 // The shop PC runs this as a plain double-clicked program, so everything binds explicitly
 // rather than relying on launch profiles that only exist during development.
@@ -46,6 +56,21 @@ app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// ---- Static assets ----
+// Served from resources compiled into the .exe rather than a wwwroot folder, so the program
+// really is a single file. In development the files on disk are picked up first by
+// UseStaticFiles above; these endpoints are what a published build uses.
+
+app.MapGet("/app.css", () => EmbeddedAsset("app.css", "text/css"));
+app.MapGet("/favicon.ico", () => EmbeddedAsset("favicon.ico", "image/x-icon"));
+
+// The shop's own logo is an optional drop-in, kept with their data so it survives an update.
+app.MapGet("/logo.png", (Db db) =>
+{
+    var path = Path.Combine(db.DataDirectory, "logo.png");
+    return File.Exists(path) ? Results.File(path, "image/png") : Results.NotFound();
+});
 
 // ---- File exports ----
 // Plain endpoints rather than Blazor pages, so the browser gets a real download.
@@ -153,6 +178,17 @@ lifetime.ApplicationStarted.Register(() =>
 });
 
 app.Run();
+
+/// <summary>Reads a file compiled into the assembly, cached by the browser like any other asset.</summary>
+static IResult EmbeddedAsset(string name, string contentType)
+{
+    var assembly = typeof(Program).Assembly;
+    var stream = assembly.GetManifestResourceStream($"WrenchDesk.wwwroot.{name}");
+
+    return stream is null
+        ? Results.NotFound()
+        : Results.Stream(stream, contentType);
+}
 
 static DateTime? ParseDate(string? value) =>
     DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,

@@ -1,0 +1,67 @@
+name: release
+
+# Builds the shop-ready WrenchDesk.exe and attaches it to a GitHub Release, so nobody has to
+# install the .NET SDK or run a build script to get a working copy.
+#
+# Cut a release with:  git tag v1.3.0 && git push origin v1.3.0
+# Or run this workflow by hand from the Actions tab.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.3.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test
+        run: dotnet test WrenchDesk.sln --configuration Release
+
+      - name: Publish single-file build
+        run: powershell -ExecutionPolicy Bypass -File build/publish.ps1
+
+      - name: Check it really is one file
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem build/output -Recurse -File
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'WrenchDesk.exe') {
+            Write-Error "Expected a single WrenchDesk.exe, got: $($files.Name -join ', ')"
+            exit 1
+          }
+          Write-Host "OK - one file, $([math]::Round($files[0].Length/1MB,1)) MB"
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: WrenchDesk ${{ github.event.inputs.tag || github.ref_name }}
+          files: build/output/WrenchDesk.exe
+          body: |
+            ## Download and run
+
+            Download **WrenchDesk.exe** below and double-click it. That is the whole install —
+            it sets itself up, puts an icon on the desktop, adds itself to the Start menu, and
+            starts. Nothing else to install: no .NET, no runtime, no setup wizard.
+
+            Windows will warn that it is from an unknown publisher, because the file is not
+            code-signed. Choose **More info** then **Run anyway**.
+
+            Your shop data lives in `Documents\WrenchDesk` and is never touched by an update —
+            to update, just download the new file and run it again.
+
+            To remove it: `WrenchDesk.exe --uninstall`

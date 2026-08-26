@@ -62,7 +62,7 @@ else
     [Parameter] public string? Width { get; set; }
     [Parameter] public string? MaxHeight { get; set; }
 
-    [Inject] private IWebHostEnvironment Env { get; set; } = default!;
+    [Inject] private Db Database { get; set; } = default!;
 
     private bool _hasFile;
     private long _fileStamp;
@@ -81,7 +81,9 @@ else
 
     protected override void OnInitialized()
     {
-        var path = Path.Combine(Env.WebRootPath ?? "wwwroot", "logo.png");
+        // Lives with the shop's data rather than beside the program, so updating WrenchDesk
+        // never loses it and a backup of the data folder carries the branding too.
+        var path = Path.Combine(Database.DataDirectory, "logo.png");
 
         if (File.Exists(path))
         {

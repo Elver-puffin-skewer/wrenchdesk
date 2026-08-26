@@ -22,6 +22,16 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
   </ItemGroup>
 
+  <!--
+    Baked into the assembly so the published program is genuinely one file. Without this the
+    stylesheet and icon sit in a wwwroot folder beside the .exe, and "download one file and
+    double-click it" stops being true the moment someone moves the .exe on its own.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\app.css" />
+    <EmbeddedResource Include="wwwroot\favicon.ico" />
+  </ItemGroup>
+
   <!-- The Web SDK globs **/*.cs, which would otherwise pull the test project into the app. -->
   <ItemGroup>
     <Compile Remove="tests/**" />
