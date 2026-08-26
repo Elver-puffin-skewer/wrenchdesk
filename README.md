@@ -1,7 +1,7 @@
 # WrenchDesk
 
-Shop management for a small-engine repair business — mowers, pressure washers, tillers, generators,
-chainsaws, and whatever else rolls through the door.
+Shop management for **Walt's Small Engines** (651 Toney Rd, Toney, AL 35773 · (256) 852-0489) —
+mowers, pressure washers, tillers, generators, chainsaws, and whatever else rolls through the door.
 
 It replaces the notebook: customers, their equipment, estimates, repair history, and what money
 actually came in today and this week. It runs entirely on your own PC. No subscription, no cloud
@@ -31,10 +31,10 @@ today's takings and this week's; the Money page breaks it down day by day and we
 by payment method for reconciling the till, and shows what's still owed across all unpaid tickets.
 Export any date range to CSV for a bookkeeper or a tax return.
 
-**Schedule** — pickups and deliveries with the customer's address attached. Every stop has a one-click
-**Add to Google Calendar** link that opens the event prefilled, and a **Directions** link that opens
-Google Maps for whoever is driving. A whole run can be exported as an `.ics` file and imported into
-Google Calendar in one go.
+**Schedule** — pickups and deliveries with the customer's address attached, and **live two-way Google
+Calendar sync**: write a stop up here and it appears on the shop calendar; move or cancel it from a
+phone and it changes here. Every stop also has a **Directions** link that opens Google Maps for
+whoever is driving. See [Google Calendar sync](#google-calendar-sync).
 
 **Backups** — the entire system is one SQLite file. Press **Back up now** to write a copy straight to
 a USB stick or external drive, or switch on a daily/weekly schedule that does it unattended.
@@ -166,6 +166,27 @@ site and swap them occasionally.
 
 ---
 
+## Branding
+
+The colours come straight off the shop sign — navy `#16233d`, red `#c8202a`, cream `#f7f2dd` —
+defined as CSS variables at the top of [`wwwroot/app.css`](wwwroot/app.css). Change them there and
+the whole app follows.
+
+### Using the real logo artwork
+
+Out of the box the app draws its own badge in those colours, so it looks right with nothing to
+install. To use the actual sign artwork instead, drop the image in as:
+
+```
+wwwroot\logo.png
+```
+
+It is picked up automatically — in the sidebar and at the top of every printed estimate and invoice
+— with no code change and no restart needed. A transparent PNG around 600px wide works well. Remove
+the file and it falls back to the drawn badge.
+
+---
+
 ## First-time setup
 
 Open **Settings** and fill in:
@@ -201,18 +222,77 @@ customer's record. On the Schedule page, hit *Add to Google Calendar* to put it 
 
 ---
 
-## Google Calendar
+## Google Calendar sync
 
-WrenchDesk doesn't ask for your Google password or need an API key. Instead:
+Changes flow **both ways**. Write up a pickup here and it lands on the shop calendar within a few
+minutes. Drag it to a new time on your phone, or cancel it, and the schedule here follows.
 
-- **Add to Google Calendar** on any stop opens Google with the event already filled in — title,
-  time, address, customer phone, ticket number. Press Save.
-- **Export .ics** on the Schedule page downloads the next 90 days as a calendar file. Import it at
-  Google Calendar → Settings → Import & export.
-- **Directions** opens Google Maps routed to the customer's address.
+### Use a calendar kept just for shop work
 
-A proper two-way sync (where moving an event in Google moves it here) would need an OAuth sign-in
-and a Google Cloud project. It's on the list below, not built yet.
+Everything on the synced calendar is treated as shop work — an event added on a phone becomes an
+appointment here. Point it at a personal calendar and you would pull in dentist appointments and
+birthdays. Settings has a **Create a new "Walt's Small Engines — Schedule" calendar** button that
+makes a clean one in a single click; use that unless you already keep a shop calendar.
+
+### One-time setup (about ten minutes, free)
+
+Google requires every business to use its own credentials — they cannot be shipped inside the app,
+which is also why this repo can be public.
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in with the account
+   that owns the shop calendar.
+2. Create a project — call it **WrenchDesk**.
+3. **APIs & Services → Library**, search for **Google Calendar API**, press **Enable**.
+4. **APIs & Services → OAuth consent screen**. Choose **External**, give it the app name
+   *WrenchDesk*, and put your own email in the support and developer contact fields.
+5. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+   Application type **Web application**. Under **Authorised redirect URIs** add exactly:
+
+   ```
+   http://localhost:5173/google/callback
+   ```
+
+   (If you changed `Port` in `appsettings.json`, use that number instead. Settings shows the exact
+   URI to paste.)
+6. Copy the **Client ID** and **Client secret** into **Settings → Google Calendar**, press
+   **Save credentials**, then **Connect Google account** and approve the consent screen.
+7. Pick or create the calendar, then tick **Keep this calendar and the shop schedule in step**.
+
+### Important: set the consent screen to "In production"
+
+While the OAuth consent screen is left in **Testing**, Google expires the connection **every 7
+days** and syncing silently stops until someone reconnects. On the OAuth consent screen page, press
+**Publish app** to move it to *In production*.
+
+Because the app is not verified by Google, the consent screen shows an "unverified app" warning the
+first time — press **Advanced → Go to WrenchDesk (unsafe)**. That warning is expected: it is your
+own project, used only by your own account. Verification is only needed to offer an app to the
+general public.
+
+If the connection does lapse, Settings shows a red **Google has dropped the connection** notice and
+syncing pauses until you press Connect again — it will not sit there failing quietly.
+
+### How the two directions behave
+
+| What happens | Result |
+| --- | --- |
+| Stop written up here | Appears on the Google calendar |
+| Stop moved or renamed here | The Google event moves |
+| Stop deleted here | The Google event is deleted |
+| Event moved in Google | The appointment moves here |
+| Event cancelled/deleted in Google | The appointment is removed here |
+| New event added in Google | Becomes an appointment here, with no customer attached — open it and pick one |
+| Same stop edited in both places between syncs | The most recent edit wins |
+| All-day entry on the calendar | Left alone — a shop stop has a time |
+
+Renaming an event's prefix in Google (say `Pickup — Dale` to `Delivery — Dale`) changes the kind
+here too.
+
+### Why it polls rather than updating instantly
+
+Google can only push changes to a public HTTPS address, and a shop PC behind a home router does not
+have one. So WrenchDesk asks Google what changed on an interval you choose in Settings — one minute
+to an hour, five minutes by default. **Sync now** forces it immediately.
 
 ---
 
@@ -222,7 +302,6 @@ Deliberately left out of the first version, roughly in the order they'd be worth
 
 - **Inventory** — parts on hand, reorder points, and pulling a part onto a ticket decrementing stock.
   The owner flagged this as wanted eventually; the ticket line structure already has room for it.
-- **Two-way Google Calendar sync** — needs OAuth. The one-click links above cover most of the need.
 - **Photos on tickets** — before/after shots of a machine.
 - **Text/email the customer** when a repair is ready.
 - **Multiple users** with their own logins. Right now anyone who can reach the app can use it, which
@@ -267,14 +346,16 @@ powershell build\publish.ps1    # produce build\output\WrenchDesk.exe for the sh
 | **UI** | Blazor Server (.NET 8) — server-rendered, so a tablet only needs a browser |
 | **Data** | SQLite via Dapper, one local file, no server process |
 | **Styling** | Hand-written CSS, no framework |
-| **Dependencies** | Two NuGet packages (Dapper, Microsoft.Data.Sqlite). That's the lot. |
+| **Calendar** | Google Calendar API v3, OAuth 2.0 loopback flow, tokens kept in the shop's own database |
+| **Dependencies** | Dapper, Microsoft.Data.Sqlite, Google.Apis.Calendar.v3 |
 
 ```
-Data/          models, migrations, and one repository per area
-Services/      backups, Google Calendar and .ics generation
-Components/    Blazor pages and layout
-tests/         xunit tests against a real migrated SQLite file
-build/         publish script
+Data/            models, migrations, and one repository per area
+Services/        backups and scheduling
+Services/Google/ calendar sync — contracts, mapping, engine, OAuth
+Components/      Blazor pages and layout
+tests/           xunit tests against a real migrated SQLite file
+build/           publish script
 ```
 
 **Money is stored as whole cents** (`long`), never as a floating-point number. Quantities are stored
@@ -288,6 +369,13 @@ half-cent tax cases, so the list and the invoice can never show different number
 **Schema changes** go on the end of the `Migrations` array in `Data/Db.cs` — never edit an entry that
 has already shipped, because existing shop databases have run it. The file tracks its own version in
 `PRAGMA user_version` and steps forward on startup.
+
+**The calendar sync is testable without Google.** Everything the engine needs sits behind
+`ICalendarApi`, and `FakeCalendarApi` in the test project models the behaviour that actually matters
+— server-assigned ids, an `updated` stamp that moves on every write, deletions coming back as
+cancellations, and sync tokens that expire. `CalendarSyncTests` uses it to pin both directions,
+echo suppression (a pushed event must not read back as a change), conflict resolution, and recovery
+from an expired token.
 
 ---
 

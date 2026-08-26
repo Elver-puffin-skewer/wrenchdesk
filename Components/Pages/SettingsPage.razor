@@ -2,6 +2,10 @@
 @inject SettingsStore Settings
 @inject BackupService Backups
 @inject Db Database
+@inject GoogleAuthService Auth
+@inject CalendarSyncService Sync
+@inject ScheduleRepo Schedule
+@inject NavigationManager Nav
 
 <PageTitle>Settings — WrenchDesk</PageTitle>
 
@@ -292,6 +296,183 @@
 
 <div class="card">
     <div class="card-head">
+        <h2>Google Calendar</h2>
+        <div class="spacer"></div>
+        <span class="badge @(_googleConnected && _syncEnabled ? "badge-ready" : "badge-closed")">
+            @(!_googleConnected ? "Not connected" : _syncEnabled ? "Syncing" : "Connected, paused")
+        </span>
+    </div>
+    <div class="card-body">
+        @if (_googleFlash is not null)
+        {
+            <div class="alert @_googleFlashClass">@_googleFlash</div>
+        }
+
+        @if (_needsReconnect)
+        {
+            <div class="alert alert-danger">
+                <strong>Google has dropped the connection.</strong> Nothing is syncing until you reconnect below.
+                <div class="small" style="margin-top:.25rem">
+                    If the OAuth consent screen in Google Cloud is still set to <em>Testing</em>, Google
+                    expires the connection every 7 days. Setting it to <em>In production</em> stops that.
+                </div>
+            </div>
+        }
+
+        @if (!_googleConfigured)
+        {
+            <div class="alert alert-info">
+                <strong>One-time setup.</strong> Google requires each shop to use its own credentials —
+                they cannot be shipped inside the app. The README has the walkthrough
+                (<span class="mono">Google Calendar sync</span>). It takes about ten minutes and costs nothing.
+            </div>
+        }
+
+        <div class="form-grid">
+            <div class="field">
+                <label>Client ID</label>
+                <input type="text" @bind="_googleClientId" placeholder="…apps.googleusercontent.com" />
+            </div>
+            <div class="field">
+                <label>Client secret</label>
+                <input type="password" @bind="_googleClientSecret" placeholder="GOCSPX-…" />
+            </div>
+            <div class="field span-2">
+                <div class="muted small">
+                    In Google Cloud, the authorised redirect URI must be exactly:
+                    <span class="mono">@_redirectUri</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="btn-row" style="margin-bottom:.5rem">
+            <button class="btn" @onclick="SaveGoogleCredentials">Save credentials</button>
+
+            @if (_googleConfigured)
+            {
+                <a class="btn btn-primary" href="/google/connect">
+                    @(_googleConnected ? "Reconnect Google account" : "Connect Google account")
+                </a>
+            }
+
+            @if (_googleConnected)
+            {
+                <button class="btn btn-danger" @onclick="() => _confirmDisconnect = true">Disconnect</button>
+            }
+        </div>
+
+        @if (_googleConnected)
+        {
+            <hr style="border:0;border-top:1px solid var(--line-2);margin:1.25rem 0" />
+
+            <div class="form-grid">
+                <div class="field span-2">
+                    <label>Calendar to sync with</label>
+                    @if (_calendars.Count == 0)
+                    {
+                        <div class="btn-row">
+                            <button class="btn btn-sm" @onclick="LoadCalendars" disabled="@_googleBusy">
+                                @(_googleBusy ? "Loading…" : "Load my calendars")
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <select value="@_calendarId" @onchange="OnCalendarChange">
+                            <option value="">— choose a calendar —</option>
+                            @foreach (var c in _calendars.Where(c => c.CanWrite))
+                            {
+                                <option value="@c.Id">@c.Name @(c.IsPrimary ? "(main calendar)" : "")</option>
+                            }
+                        </select>
+                    }
+                    <div class="muted small" style="margin-top:.35rem">
+                        Use a calendar kept just for shop work. Everything on it is treated as shop
+                        jobs — an event added on a phone becomes an appointment here — so pointing this
+                        at a personal calendar would pull in dentist appointments and birthdays.
+                    </div>
+                </div>
+
+                <div class="field span-2">
+                    <div class="btn-row">
+                        <button class="btn btn-sm" @onclick="CreateShopCalendar" disabled="@_googleBusy">
+                            + Create a new &ldquo;@_shopNameForCalendar&rdquo; calendar
+                        </button>
+                        @if (_calendars.Count > 0)
+                        {
+                            <button class="btn btn-sm" @onclick="LoadCalendars" disabled="@_googleBusy">↻ Refresh list</button>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_calendarId))
+            {
+                <label class="check" style="margin:1rem 0">
+                    <input type="checkbox" checked="@_syncEnabled" @onchange="OnSyncToggle" />
+                    Keep this calendar and the shop schedule in step, both ways
+                </label>
+
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Check every</label>
+                        <select @bind="_syncIntervalMin" @bind:after="SaveGoogleSettings">
+                            <option value="1">1 minute</option>
+                            <option value="5">5 minutes</option>
+                            <option value="15">15 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="60">1 hour</option>
+                        </select>
+                        <div class="muted small" style="margin-top:.2rem">
+                            Google cannot reach a shop PC directly, so WrenchDesk asks on this interval.
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary btn-block" @onclick="SyncNow" disabled="@_googleBusy">
+                            @(_googleBusy ? "Syncing…" : "Sync now")
+                        </button>
+                    </div>
+                </div>
+
+                <dl class="kv" style="margin-top:.75rem">
+                    <dt>Last sync</dt>
+                    <dd>
+                        @if (_lastSync is null)
+                        {
+                            <span class="muted">Never</span>
+                        }
+                        else
+                        {
+                            <span>@_lastSync.Value.ToString("MMM d, h:mm tt")</span>
+                            @if (!string.IsNullOrWhiteSpace(_lastSyncResult))
+                            {
+                                <span class="muted"> — @_lastSyncResult</span>
+                            }
+                        }
+                    </dd>
+                </dl>
+
+                @if (!string.IsNullOrWhiteSpace(_googleLastError))
+                {
+                    <div class="alert alert-danger" style="margin:.5rem 0 0">
+                        <strong>Last sync problem:</strong> @_googleLastError
+                    </div>
+                }
+
+                <div class="alert alert-info" style="margin:1rem 0 0">
+                    <strong>How the two directions behave.</strong> Move or cancel a stop in Google and it
+                    changes here. Write one up here and it appears there. If the same stop is edited in
+                    both places between syncs, the most recent edit wins. All-day entries on the calendar
+                    are left alone — a shop stop has a time.
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
         <h2>Backups on hand</h2>
         <div class="spacer"></div>
         <span class="muted small mono">@_listedFolder</span>
@@ -326,6 +507,27 @@
     }
 </div>
 
+@if (_confirmDisconnect)
+{
+    <Modal Title="Disconnect Google Calendar?" OnClose="() => _confirmDisconnect = false">
+        <ChildContent>
+            <p>
+                Syncing stops and the saved Google sign-in is removed. Your appointments stay here,
+                and the events already on the Google calendar stay there — they simply stop tracking
+                each other.
+            </p>
+            <p class="muted small">
+                Reconnecting later starts fresh: every appointment is pushed again, which can create
+                duplicates of events that are already on that calendar.
+            </p>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _confirmDisconnect = false">Keep it connected</button>
+            <button class="btn btn-danger" @onclick="DisconnectGoogle">Disconnect</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     /// <summary>Sentinel in the drive dropdowns for "let me type a path instead".</summary>
     private const string CustomPathOption = "__custom__";
@@ -358,6 +560,8 @@
     private string _manualRoot = "";
     private string _manualFolder = DefaultFolderName;
     private BackupResult? _manualResult;
+
+    protected override void OnParametersSet() => ReadGoogleOutcome();
 
     protected override void OnInitialized()
     {
@@ -392,6 +596,8 @@
 
         _listedFolder = Backups.ScheduledDestination;
         _backups = Backups.ListBackups(_listedFolder);
+
+        LoadGoogle();
     }
 
     /// <summary>Turns a stored absolute path back into the drive + folder the dropdowns work in.</summary>
@@ -511,4 +717,214 @@
     }
 
     private static string FormatSize(long bytes) => DriveOption.FormatSize(bytes);
+
+    // ---- Google Calendar ----
+
+    [Parameter, SupplyParameterFromQuery(Name = "google")]
+    public string? GoogleOutcome { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "detail")]
+    public string? GoogleOutcomeDetail { get; set; }
+
+    private bool _googleConfigured;
+    private bool _googleConnected;
+    private bool _needsReconnect;
+    private bool _syncEnabled;
+    private bool _googleBusy;
+    private bool _confirmDisconnect;
+
+    private string _googleClientId = "";
+    private string _googleClientSecret = "";
+    private string _calendarId = "";
+    private int _syncIntervalMin = 5;
+    private DateTime? _lastSync;
+    private string _lastSyncResult = "";
+    private string _googleLastError = "";
+    private string _redirectUri = "";
+    private string _shopNameForCalendar = "WrenchDesk";
+
+    private List<CalendarSummary> _calendars = new();
+    private string? _googleFlash;
+    private string _googleFlashClass = "alert-ok";
+
+    private void LoadGoogle()
+    {
+        _googleConfigured = Auth.IsConfigured;
+        _googleConnected = Auth.IsConnected;
+        _needsReconnect = Settings.GetBool(SettingsStore.GoogleNeedsReconnect);
+        _syncEnabled = Settings.GetBool(SettingsStore.GoogleSyncEnabled);
+
+        _googleClientId = Settings.Get(SettingsStore.GoogleClientId);
+        _googleClientSecret = Settings.Get(SettingsStore.GoogleClientSecret);
+        _calendarId = Settings.Get(SettingsStore.GoogleCalendarId);
+
+        var interval = Settings.GetInt(SettingsStore.GoogleSyncIntervalMin);
+        _syncIntervalMin = interval <= 0 ? 5 : interval;
+
+        _lastSync = Settings.GetTimestamp(SettingsStore.GoogleLastSync);
+        _lastSyncResult = Settings.Get(SettingsStore.GoogleLastResult);
+        _googleLastError = Settings.Get(SettingsStore.GoogleLastError);
+
+        var shopName = Settings.Get(SettingsStore.ShopName);
+        _shopNameForCalendar = string.IsNullOrWhiteSpace(shopName) ? "WrenchDesk" : $"{shopName} — Schedule";
+
+        // Google only accepts a loopback redirect for a desktop-style app, and it must match exactly.
+        var uri = new Uri(Nav.BaseUri);
+        _redirectUri = $"http://localhost:{uri.Port}/google/callback";
+    }
+
+    /// <summary>Turns the ?google= marker the OAuth callback redirects back with into a message.</summary>
+    private void ReadGoogleOutcome()
+    {
+        if (string.IsNullOrWhiteSpace(GoogleOutcome)) return;
+
+        (_googleFlash, _googleFlashClass) = GoogleOutcome switch
+        {
+            "connected" => ("Connected to Google. Now pick which calendar to sync with.", "alert-ok"),
+            "denied" => ("Google sign-in was cancelled, so nothing changed.", "alert-warn"),
+            "notconfigured" => ("Save your client ID and secret first.", "alert-warn"),
+            "nocode" => ("Google did not send an authorisation code back. Try connecting again.", "alert-danger"),
+            "failed" => ($"Could not finish connecting: {GoogleOutcomeDetail}", "alert-danger"),
+            _ => (null, "alert-ok")
+        };
+    }
+
+    private void SaveGoogleCredentials()
+    {
+        Settings.SetAll(new Dictionary<string, string>
+        {
+            [SettingsStore.GoogleClientId] = _googleClientId.Trim(),
+            [SettingsStore.GoogleClientSecret] = _googleClientSecret.Trim()
+        });
+
+        _googleFlash = "Credentials saved. Now press Connect Google account.";
+        _googleFlashClass = "alert-ok";
+        LoadGoogle();
+    }
+
+    private void SaveGoogleSettings()
+    {
+        Settings.SetAll(new Dictionary<string, string>
+        {
+            [SettingsStore.GoogleCalendarId] = _calendarId,
+            [SettingsStore.GoogleCalendarName] = _calendars.FirstOrDefault(c => c.Id == _calendarId)?.Name ?? "",
+            [SettingsStore.GoogleSyncEnabled] = _syncEnabled ? "true" : "false",
+            [SettingsStore.GoogleSyncIntervalMin] = _syncIntervalMin.ToString()
+        });
+
+        LoadGoogle();
+    }
+
+    private async Task LoadCalendars()
+    {
+        _googleBusy = true;
+        _googleFlash = null;
+        StateHasChanged();
+
+        try
+        {
+            var api = await Auth.CreateApiAsync();
+            _calendars = (await api.ListCalendarsAsync(CancellationToken.None)).ToList();
+
+            if (_calendars.Count == 0)
+            {
+                _googleFlash = "That account has no calendars you can write to.";
+                _googleFlashClass = "alert-warn";
+            }
+        }
+        catch (Exception ex)
+        {
+            _googleFlash = ex.Message;
+            _googleFlashClass = "alert-danger";
+        }
+
+        _googleBusy = false;
+        LoadGoogle();
+    }
+
+    private async Task CreateShopCalendar()
+    {
+        _googleBusy = true;
+        _googleFlash = null;
+        StateHasChanged();
+
+        try
+        {
+            var api = await Auth.CreateApiAsync();
+            var created = await api.CreateCalendarAsync(_shopNameForCalendar, CancellationToken.None);
+
+            _calendars = (await api.ListCalendarsAsync(CancellationToken.None)).ToList();
+            _calendarId = created.Id;
+            SaveGoogleSettings();
+
+            _googleFlash = $"Created “{created.Name}” and selected it. Turn syncing on below.";
+            _googleFlashClass = "alert-ok";
+        }
+        catch (Exception ex)
+        {
+            _googleFlash = ex.Message;
+            _googleFlashClass = "alert-danger";
+        }
+
+        _googleBusy = false;
+        LoadGoogle();
+    }
+
+    private void OnCalendarChange(ChangeEventArgs e)
+    {
+        var picked = e.Value?.ToString() ?? "";
+
+        // Switching calendars would otherwise leave every appointment pointing at an event on the
+        // old one, so start the links and the incremental token clean.
+        if (!string.IsNullOrWhiteSpace(_calendarId) && picked != _calendarId)
+        {
+            Schedule.ClearAllGoogleLinks();
+            Settings.Set(SettingsStore.GoogleSyncToken, "");
+        }
+
+        _calendarId = picked;
+        SaveGoogleSettings();
+    }
+
+    private void OnSyncToggle(ChangeEventArgs e)
+    {
+        _syncEnabled = e.Value is bool b && b;
+        SaveGoogleSettings();
+    }
+
+    private async Task SyncNow()
+    {
+        _googleBusy = true;
+        _googleFlash = null;
+        StateHasChanged();
+
+        try
+        {
+            var api = await Auth.CreateApiAsync();
+            var report = await Sync.SyncAsync(api, _calendarId, CancellationToken.None);
+
+            _googleFlash = report.Describe();
+            _googleFlashClass = report.Success ? "alert-ok" : "alert-danger";
+        }
+        catch (Exception ex)
+        {
+            _googleFlash = ex.Message;
+            _googleFlashClass = "alert-danger";
+        }
+
+        _googleBusy = false;
+        LoadGoogle();
+    }
+
+    private void DisconnectGoogle()
+    {
+        Auth.Disconnect();
+        Schedule.ClearAllGoogleLinks();
+
+        _confirmDisconnect = false;
+        _calendars = new();
+        _googleFlash = "Disconnected from Google Calendar.";
+        _googleFlashClass = "alert-ok";
+        LoadGoogle();
+    }
 }

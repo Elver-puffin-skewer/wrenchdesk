@@ -2,23 +2,29 @@
    Built for a counter PC and a tablet with greasy fingers: big targets, high contrast,
    no hover-only affordances, and printable estimates. */
 
+/* Palette taken from the shop sign: navy field, red wordmark, cream badge. */
 :root {
-    --ink:          #16191d;
-    --ink-2:        #3d444d;
-    --ink-3:        #6b747f;
-    --line:         #dfe3e8;
-    --line-2:       #eef1f4;
-    --bg:           #f4f6f8;
+    --ink:          #14192b;
+    --ink-2:        #3a4360;
+    --ink-3:        #6a7389;
+    --line:         #dde1ea;
+    --line-2:       #eef0f5;
+    --bg:           #f4f5f8;
     --surface:      #ffffff;
 
-    --brand:        #b8471f;
-    --brand-dark:   #93381a;
-    --brand-tint:   #fdf1ec;
+    --navy:         #16233d;
+    --navy-2:       #223357;
+    --cream:        #f7f2dd;
+    --cream-2:      #fbf8ee;
 
-    --nav-bg:       #1d2228;
-    --nav-fg:       #b9c1cb;
+    --brand:        #c8202a;
+    --brand-dark:   #9e1720;
+    --brand-tint:   #fdecec;
+
+    --nav-bg:       #16233d;
+    --nav-fg:       #aab6cd;
     --nav-fg-hi:    #ffffff;
-    --nav-active:   #2c343d;
+    --nav-active:   #223357;
 
     --ok:           #1a7f4b;
     --ok-tint:      #e8f5ee;
@@ -49,7 +55,7 @@ html, body {
     -webkit-text-size-adjust: 100%;
 }
 
-h1, h2, h3, h4 { margin: 0 0 .5rem; font-weight: 650; line-height: 1.25; letter-spacing: -.01em; }
+h1, h2, h3, h4 { margin: 0 0 .5rem; font-weight: 700; line-height: 1.25; letter-spacing: -.015em; color: var(--navy); }
 h1 { font-size: 1.6rem; }
 h2 { font-size: 1.2rem; }
 h3 { font-size: 1.02rem; }
@@ -87,12 +93,11 @@ a:hover { text-decoration: underline; }
 }
 .brand:hover { text-decoration: none; }
 .brand .mark {
-    width: 28px; height: 28px;
+    width: 30px; height: 30px;
     display: grid; place-items: center;
-    background: var(--brand);
-    border-radius: 6px;
-    font-size: 1rem;
+    flex: 0 0 auto;
 }
+.brand .mark svg { display: block; width: 100%; height: 100%; }
 
 .nav-list { padding: .6rem 0; flex: 1; overflow-y: auto; }
 
@@ -162,7 +167,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     display: flex;
     align-items: center;
     gap: .75rem;
-    background: #fbfcfd;
+    background: var(--cream-2);
 }
 .card-head h2, .card-head h3 { margin: 0; }
 .card-head .spacer { flex: 1; }
@@ -191,11 +196,11 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     font-weight: 650;
     margin-bottom: .35rem;
 }
-.stat .value { font-size: 1.85rem; font-weight: 680; letter-spacing: -.025em; line-height: 1.1; }
+.stat .value { font-size: 1.85rem; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; color: var(--navy); }
 .stat .value.sm { font-size: 1.35rem; }
 .stat .foot { font-size: .8rem; color: var(--ink-3); margin-top: .3rem; }
-.stat.accent { background: var(--brand-tint); border-color: #f2d5c8; }
-.stat.accent .value { color: var(--brand-dark); }
+.stat.accent { background: var(--cream); border-color: #e8dfbe; }
+.stat.accent .value { color: var(--brand); }
 .stat.good .value { color: var(--ok); }
 .stat.owed .value { color: var(--warn); }
 
@@ -216,8 +221,8 @@ table.data th {
     letter-spacing: .055em;
     color: var(--ink-3);
     font-weight: 650;
-    border-bottom: 1px solid var(--line);
-    background: #fbfcfd;
+    border-bottom: 2px solid var(--line);
+    background: var(--cream-2);
     white-space: nowrap;
 }
 table.data td {
@@ -338,7 +343,7 @@ input[type=email], input[type=search], input[type=tel], select, textarea {
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px rgba(184, 71, 31, .13);
+    box-shadow: 0 0 0 3px rgba(200, 32, 42, .15);
 }
 textarea { resize: vertical; min-height: 4.5rem; line-height: 1.5; }
 select { cursor: pointer; }
@@ -516,9 +521,9 @@ select { cursor: pointer; }
     box-shadow: var(--shadow-lg);
     color: #000;
 }
-.print-head { display: flex; justify-content: space-between; gap: 2rem; border-bottom: 3px solid #000; padding-bottom: 1rem; }
-.print-head .shop-name { font-size: 1.5rem; font-weight: 750; letter-spacing: -.02em; }
-.print-head .doc-type { font-size: 1.5rem; font-weight: 750; text-transform: uppercase; letter-spacing: .02em; text-align: right; }
+.print-head { display: flex; justify-content: space-between; gap: 2rem; align-items: flex-start; border-bottom: 3px solid var(--navy); padding-bottom: 1rem; }
+.print-head .shop-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; color: var(--navy); }
+.print-head .doc-type { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; text-align: right; color: var(--brand); }
 .print-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 1.2rem 0; }
 .print-parties h4 {
     font-size: .72rem;

@@ -22,6 +22,9 @@ else
 
     <div class="print-sheet">
         <div class="print-head">
+            <div style="display:flex;gap:1rem;align-items:flex-start">
+                <ShopLogo Variant="ShopLogo.LogoVariant.Full" Width="118px" MaxHeight="88px"
+                          Alt="@_settings[SettingsStore.ShopName]" />
             <div>
                 <div class="shop-name">@_settings[SettingsStore.ShopName]</div>
                 @if (!string.IsNullOrWhiteSpace(_settings[SettingsStore.ShopAddress]))
@@ -35,6 +38,7 @@ else
                         <span> · @_settings[SettingsStore.ShopEmail]</span>
                     }
                 </div>
+            </div>
             </div>
             <div>
                 <div class="doc-type">@(_isInvoice ? "Invoice" : "Estimate")</div>

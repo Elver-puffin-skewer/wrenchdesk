@@ -1,6 +1,8 @@
+@inject SettingsStore Settings
+
 <a class="brand" href="/">
-    <span class="mark">🔧</span>
-    <span>WrenchDesk</span>
+    <span class="mark"><ShopLogo Variant="ShopLogo.LogoVariant.Mark" Alt="@_shopName" /></span>
+    <span>@_shopName</span>
 </a>
 
 <nav class="nav-list">
@@ -16,3 +18,13 @@
     Everything is stored on this PC.<br />
     Set up backups in <a href="/settings" style="color:inherit;text-decoration:underline">Settings</a>.
 </div>
+
+@code {
+    private string _shopName = "WrenchDesk";
+
+    protected override void OnInitialized()
+    {
+        var name = Settings.Get(SettingsStore.ShopName);
+        if (!string.IsNullOrWhiteSpace(name)) _shopName = name;
+    }
+}

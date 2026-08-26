@@ -114,9 +114,150 @@ public class ScheduleRepo
             new { id, status, now = NowUtc() });
     }
 
+    /// <summary>
+    /// Deletes an appointment, leaving a tombstone when it had reached Google — otherwise the
+    /// event would stay on the shop calendar with nothing left here to remove it.
+    /// </summary>
     public void Delete(long id)
     {
         using var conn = _db.Open();
+        using var tx = conn.BeginTransaction();
+
+        var googleEventId = conn.ExecuteScalar<string?>(
+            "SELECT google_event_id FROM appointments WHERE id = @id;", new { id }, tx);
+
+        if (!string.IsNullOrWhiteSpace(googleEventId))
+        {
+            conn.Execute("""
+                INSERT INTO google_tombstones (google_event_id, deleted_utc)
+                VALUES (@googleEventId, @now)
+                ON CONFLICT(google_event_id) DO UPDATE SET deleted_utc = excluded.deleted_utc;
+                """, new { googleEventId, now = NowUtc() }, tx);
+        }
+
+        conn.Execute("DELETE FROM appointments WHERE id = @id;", new { id }, tx);
+        tx.Commit();
+    }
+
+    // ---- Google Calendar sync support ----
+
+    /// <summary>Appointments that need pushing: never synced, or edited here since the last push.</summary>
+    public List<Appointment> NeedingPush()
+    {
+        using var conn = _db.Open();
+        return conn.Query<Appointment>("""
+            SELECT * FROM appointments
+            WHERE google_event_id = '' OR google_synced_utc <> updated_utc
+            ORDER BY id;
+            """).ToList();
+    }
+
+    public Appointment? GetByGoogleEventId(string googleEventId)
+    {
+        using var conn = _db.Open();
+        return conn.QuerySingleOrDefault<Appointment>(
+            "SELECT * FROM appointments WHERE google_event_id = @googleEventId;", new { googleEventId });
+    }
+
+    /// <summary>Records the result of a successful push or pull without disturbing the shop's own edits.</summary>
+    public void MarkSynced(long id, string googleEventId, string googleUpdated)
+    {
+        using var conn = _db.Open();
+        conn.Execute("""
+            UPDATE appointments
+            SET google_event_id   = @googleEventId,
+                google_updated    = @googleUpdated,
+                google_synced_utc = updated_utc
+            WHERE id = @id;
+            """, new { id, googleEventId, googleUpdated });
+    }
+
+    /// <summary>
+    /// Applies values that came from Google. Bumps updated_utc and immediately marks it synced,
+    /// so a pulled change is not mistaken for a local edit and pushed straight back.
+    /// </summary>
+    public void ApplyFromGoogle(Appointment appointment, string googleUpdated)
+    {
+        using var conn = _db.Open();
+        var now = NowUtc();
+
+        conn.Execute("""
+            UPDATE appointments SET
+                kind = @Kind, scheduled_local = @ScheduledLocal, duration_min = @DurationMin,
+                address = @Address, status = @Status, notes = @Notes,
+                updated_utc = @now, google_synced_utc = @now, google_updated = @googleUpdated
+            WHERE id = @Id;
+            """, new
+        {
+            appointment.Id,
+            appointment.Kind,
+            appointment.ScheduledLocal,
+            appointment.DurationMin,
+            appointment.Address,
+            appointment.Status,
+            appointment.Notes,
+            now,
+            googleUpdated
+        });
+    }
+
+    /// <summary>Inserts an appointment that originated in Google, already marked as in step with it.</summary>
+    public long InsertFromGoogle(Appointment appointment, string googleUpdated)
+    {
+        using var conn = _db.Open();
+        var now = NowUtc();
+
+        return conn.ExecuteScalar<long>("""
+            INSERT INTO appointments
+                (customer_id, ticket_id, kind, scheduled_local, duration_min, address, status, notes,
+                 created_utc, updated_utc, google_event_id, google_synced_utc, google_updated)
+            VALUES
+                (@CustomerId, @TicketId, @Kind, @ScheduledLocal, @DurationMin, @Address, @Status, @Notes,
+                 @now, @now, @GoogleEventId, @now, @googleUpdated);
+            SELECT last_insert_rowid();
+            """, new
+        {
+            appointment.CustomerId,
+            appointment.TicketId,
+            appointment.Kind,
+            appointment.ScheduledLocal,
+            appointment.DurationMin,
+            appointment.Address,
+            appointment.Status,
+            appointment.Notes,
+            appointment.GoogleEventId,
+            now,
+            googleUpdated
+        });
+    }
+
+    /// <summary>Removes an appointment because its Google event is gone — no tombstone, Google already knows.</summary>
+    public void DeleteFromGoogle(long id)
+    {
+        using var conn = _db.Open();
         conn.Execute("DELETE FROM appointments WHERE id = @id;", new { id });
+    }
+
+    public List<(string GoogleEventId, string DeletedUtc)> Tombstones()
+    {
+        using var conn = _db.Open();
+        return conn.Query<(string GoogleEventId, string DeletedUtc)>(
+            "SELECT google_event_id, deleted_utc FROM google_tombstones ORDER BY deleted_utc;").ToList();
+    }
+
+    public void ClearTombstone(string googleEventId)
+    {
+        using var conn = _db.Open();
+        conn.Execute("DELETE FROM google_tombstones WHERE google_event_id = @googleEventId;", new { googleEventId });
+    }
+
+    /// <summary>Forgets every Google link, so a reconnect to a different calendar starts clean.</summary>
+    public void ClearAllGoogleLinks()
+    {
+        using var conn = _db.Open();
+        using var tx = conn.BeginTransaction();
+        conn.Execute("UPDATE appointments SET google_event_id = '', google_synced_utc = '', google_updated = '';", transaction: tx);
+        conn.Execute("DELETE FROM google_tombstones;", transaction: tx);
+        tx.Commit();
     }
 }

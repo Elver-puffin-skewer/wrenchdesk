@@ -13,8 +13,8 @@ public class TicketNumberingTests
         var first = h.Tickets.Get(h.NewTicket(customerId))!;
         var second = h.Tickets.Get(h.NewTicket(customerId))!;
 
-        Assert.Equal("WD-1001", first.Number);
-        Assert.Equal("WD-1002", second.Number);
+        Assert.Equal("WSE-1001", first.Number);
+        Assert.Equal("WSE-1002", second.Number);
     }
 
     [Fact]
@@ -38,9 +38,9 @@ public class TicketNumberingTests
         var secondId = h.NewTicket(customerId);
         h.Tickets.Delete(secondId);
 
-        // Reusing WD-1002 would make two different jobs share a number in the paper trail.
+        // Reusing WSE-1002 would make two different jobs share a number in the paper trail.
         var third = h.Tickets.Get(h.NewTicket(customerId))!;
-        Assert.Equal("WD-1002", third.Number);
+        Assert.Equal("WSE-1002", third.Number);
     }
 
     [Fact]
@@ -393,7 +393,7 @@ public class MigrationTests
     {
         using var h = new TestDb();
 
-        Assert.Equal("WD", h.Settings.Get(SettingsStore.TicketPrefix));
+        Assert.Equal("WSE", h.Settings.Get(SettingsStore.TicketPrefix));
         Assert.Equal(6500, h.Settings.GetInt(SettingsStore.LaborRateCents));
         Assert.Equal(DayOfWeek.Monday, h.Settings.GetWeekStart());
     }

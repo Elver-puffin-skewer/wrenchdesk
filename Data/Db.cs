@@ -214,6 +214,24 @@ public class Db
         FROM tickets tk
         LEFT JOIN payments p ON p.ticket_id = tk.id
         GROUP BY tk.id;
+        """,
+
+        // 1 -> 2: two-way Google Calendar sync
+        """
+        -- Link to the Google event, plus the two clocks the merge needs: what the local record
+        -- looked like when we last synced, and what Google's copy looked like at the same moment.
+        ALTER TABLE appointments ADD COLUMN google_event_id   TEXT NOT NULL DEFAULT '';
+        ALTER TABLE appointments ADD COLUMN google_synced_utc TEXT NOT NULL DEFAULT '';
+        ALTER TABLE appointments ADD COLUMN google_updated    TEXT NOT NULL DEFAULT '';
+
+        CREATE INDEX ix_appts_google ON appointments(google_event_id);
+
+        -- A deleted appointment leaves no row to sync from, so its Google event would linger.
+        -- The tombstone survives the delete long enough for the next sync to clear it.
+        CREATE TABLE google_tombstones (
+            google_event_id TEXT PRIMARY KEY,
+            deleted_utc     TEXT NOT NULL
+        );
         """
     };
 }
@@ -248,15 +266,32 @@ public class SettingsStore
     public const string BackupLastResult = "backup.last_result";
     public const string BackupLastError = "backup.last_error";
 
+    // Google Calendar. The client id and secret come from the shop's own Google Cloud project —
+    // they are never shipped in the repo.
+    public const string GoogleClientId = "google.client_id";
+    public const string GoogleClientSecret = "google.client_secret";
+    public const string GoogleCalendarId = "google.calendar_id";
+    public const string GoogleCalendarName = "google.calendar_name";
+    public const string GoogleSyncEnabled = "google.sync_enabled";
+    public const string GoogleSyncIntervalMin = "google.sync_interval_min";
+
+    // Written by the sync, not by the settings screen.
+    public const string GoogleTokenJson = "google.token_json";
+    public const string GoogleSyncToken = "google.sync_token";
+    public const string GoogleLastSync = "google.last_sync";
+    public const string GoogleLastResult = "google.last_result";
+    public const string GoogleLastError = "google.last_error";
+    public const string GoogleNeedsReconnect = "google.needs_reconnect";
+
     private static readonly Dictionary<string, string> Defaults = new()
     {
-        [ShopName] = "My Repair Shop",
-        [ShopAddress] = "",
-        [ShopPhone] = "",
+        [ShopName] = "Walt's Small Engines",
+        [ShopAddress] = "651 Toney Rd\nToney, AL 35773",
+        [ShopPhone] = "(256) 852-0489",
         [ShopEmail] = "",
         [TaxRateBp] = "0",
         [LaborRateCents] = "6500",
-        [TicketPrefix] = "WD",
+        [TicketPrefix] = "WSE",
         [EstimateFooter] = "Estimate valid for 30 days. Parts and labor may change if additional problems are found.",
         [WeekStartDay] = "Monday",
 
@@ -269,7 +304,21 @@ public class SettingsStore
         [BackupDestination] = "",
         [BackupLastRun] = "",
         [BackupLastResult] = "",
-        [BackupLastError] = ""
+        [BackupLastError] = "",
+
+        // Calendar sync stays off until the shop connects an account.
+        [GoogleClientId] = "",
+        [GoogleClientSecret] = "",
+        [GoogleCalendarId] = "",
+        [GoogleCalendarName] = "",
+        [GoogleSyncEnabled] = "false",
+        [GoogleSyncIntervalMin] = "5",
+        [GoogleTokenJson] = "",
+        [GoogleSyncToken] = "",
+        [GoogleLastSync] = "",
+        [GoogleLastResult] = "",
+        [GoogleLastError] = "",
+        [GoogleNeedsReconnect] = "false"
     };
 
     /// <summary>Which day the shop's week rolls over on, used by the weekly takings report.</summary>

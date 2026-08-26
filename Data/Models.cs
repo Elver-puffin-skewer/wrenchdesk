@@ -250,8 +250,20 @@ public class Appointment
     public string CreatedUtc { get; set; } = "";
     public string UpdatedUtc { get; set; } = "";
 
+    /// <summary>Google's id for the matching event, empty until this appointment has been synced.</summary>
+    public string GoogleEventId { get; set; } = "";
+
+    /// <summary>This row's UpdatedUtc as at the last successful sync — differs when the shop has edited since.</summary>
+    public string GoogleSyncedUtc { get; set; } = "";
+
+    /// <summary>Google's own "updated" stamp as at the last sync — differs when Google's copy has moved on.</summary>
+    public string GoogleUpdated { get; set; } = "";
+
     public static readonly string[] Kinds = { "Pickup", "Delivery", "Drop-off", "On-site Service", "Other" };
     public static readonly string[] Statuses = { "Scheduled", "Done", "Canceled" };
+
+    /// <summary>True when the shop has changed this appointment since it was last pushed to Google.</summary>
+    public bool HasLocalChanges => GoogleSyncedUtc != UpdatedUtc;
 
     public DateTime? Start =>
         DateTime.TryParse(ScheduledLocal, System.Globalization.CultureInfo.InvariantCulture,

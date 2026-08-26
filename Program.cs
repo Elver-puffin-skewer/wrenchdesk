@@ -6,6 +6,7 @@ using System.Text;
 using WrenchDesk.Components;
 using WrenchDesk.Data;
 using WrenchDesk.Services;
+using WrenchDesk.Services.Google;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,10 @@ builder.Services.AddScoped<TicketRepo>();
 builder.Services.AddScoped<MoneyRepo>();
 builder.Services.AddScoped<ScheduleRepo>();
 builder.Services.AddScoped<BackupService>();
+builder.Services.AddScoped<GoogleAuthService>();
+builder.Services.AddScoped<CalendarSyncService>();
 builder.Services.AddHostedService<BackupBackgroundService>();
+builder.Services.AddHostedService<CalendarSyncBackgroundService>();
 
 var app = builder.Build();
 
@@ -72,6 +76,42 @@ app.MapGet("/export/appointment/{id:long}.ics", (long id, ScheduleRepo schedule,
 
     var ics = CalendarLinks.BuildIcs(new[] { row }, settings.Get(SettingsStore.ShopName));
     return Results.File(Encoding.UTF8.GetBytes(ics), "text/calendar", $"appointment-{id}.ics");
+});
+
+// ---- Google Calendar OAuth ----
+// Google redirects a browser back here, which a Blazor component cannot receive, so these are
+// plain endpoints. The redirect URI is always loopback on this PC, never the LAN address —
+// Google only permits http:// on localhost, and it must match the Cloud console exactly.
+
+static string GoogleRedirectUri(HttpRequest request) =>
+    $"{request.Scheme}://localhost:{request.Host.Port ?? 80}/google/callback";
+
+app.MapGet("/google/connect", (HttpRequest request, GoogleAuthService auth) =>
+{
+    if (!auth.IsConfigured)
+        return Results.Redirect("/settings?google=notconfigured");
+
+    return Results.Redirect(auth.BuildAuthorizationUrl(GoogleRedirectUri(request)));
+});
+
+app.MapGet("/google/callback", async (HttpRequest request, GoogleAuthService auth,
+    string? code, string? error, CancellationToken ct) =>
+{
+    if (!string.IsNullOrWhiteSpace(error))
+        return Results.Redirect($"/settings?google=denied&detail={Uri.EscapeDataString(error)}");
+
+    if (string.IsNullOrWhiteSpace(code))
+        return Results.Redirect("/settings?google=nocode");
+
+    try
+    {
+        await auth.ExchangeCodeAsync(code, GoogleRedirectUri(request), ct);
+        return Results.Redirect("/settings?google=connected");
+    }
+    catch (Exception ex)
+    {
+        return Results.Redirect($"/settings?google=failed&detail={Uri.EscapeDataString(ex.Message)}");
+    }
 });
 
 // ---- Startup banner + browser launch ----

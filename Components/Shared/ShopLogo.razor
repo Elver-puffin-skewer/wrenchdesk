@@ -1,0 +1,90 @@
+@*
+    The shop badge.
+
+    If wwwroot/logo.png exists it is used, so the real artwork can be dropped in without touching
+    code. Otherwise this draws a badge in the sign's own colours, which keeps the app looking right
+    out of the box and prints cleanly.
+*@
+
+@if (_hasFile)
+{
+    <img src="@($"logo.png?v={_fileStamp}")" alt="@Alt" style="@ImgStyle" />
+}
+else if (Variant == LogoVariant.Mark)
+{
+    <svg viewBox="0 0 64 64" role="img" aria-label="@Alt" style="@ImgStyle">
+        <polygon points="32,3 58,17 58,47 32,61 6,47 6,17" fill="#f7f2dd" />
+        <polygon points="32,7 54,19 54,45 32,57 10,45 10,19" fill="#16233d" />
+        <text x="32" y="41" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+              font-size="30" font-weight="bold" fill="#c8202a">E</text>
+    </svg>
+}
+else
+{
+    <svg viewBox="0 0 300 200" role="img" aria-label="@Alt" style="@ImgStyle">
+        <polygon points="150,6 288,54 288,146 150,194 12,146 12,54" fill="#f7f2dd" />
+        <polygon points="150,16 278,60 278,140 150,184 22,140 22,60" fill="#16233d" />
+
+        <ellipse cx="150" cy="100" rx="104" ry="56" fill="#f7f2dd" />
+
+        <text x="150" y="72" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+              font-size="21" font-weight="bold" letter-spacing="3" fill="#c8202a">SMALL</text>
+        <text x="150" y="122" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+              font-size="52" font-weight="bold" letter-spacing="1" fill="#c8202a">ENGINE</text>
+        <text x="150" y="146" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+              font-size="21" font-weight="bold" letter-spacing="3" fill="#c8202a">REPAIR</text>
+
+        @* The chevrons that flank the wordmark on the sign. *@
+        <g fill="#f7f2dd">
+            <polygon points="40,52 84,62 40,64" />
+            <polygon points="46,68 84,74 46,78" />
+            <polygon points="260,148 216,138 260,136" />
+            <polygon points="254,132 216,126 254,122" />
+        </g>
+    </svg>
+}
+
+@code {
+    public enum LogoVariant
+    {
+        /// <summary>Small square badge, for the sidebar.</summary>
+        Mark,
+
+        /// <summary>The full badge, for printed estimates and invoices.</summary>
+        Full
+    }
+
+    [Parameter] public LogoVariant Variant { get; set; } = LogoVariant.Mark;
+    [Parameter] public string Alt { get; set; } = "Shop logo";
+    [Parameter] public string? Width { get; set; }
+    [Parameter] public string? MaxHeight { get; set; }
+
+    [Inject] private IWebHostEnvironment Env { get; set; } = default!;
+
+    private bool _hasFile;
+    private long _fileStamp;
+
+    private string ImgStyle
+    {
+        get
+        {
+            var parts = new List<string> { "display:block" };
+            if (!string.IsNullOrWhiteSpace(Width)) parts.Add($"width:{Width}");
+            if (!string.IsNullOrWhiteSpace(MaxHeight)) parts.Add($"max-height:{MaxHeight}");
+            parts.Add("height:auto");
+            return string.Join(";", parts);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        var path = Path.Combine(Env.WebRootPath ?? "wwwroot", "logo.png");
+
+        if (File.Exists(path))
+        {
+            _hasFile = true;
+            // Stamp the URL so replacing the file is picked up without a hard refresh.
+            _fileStamp = new FileInfo(path).LastWriteTimeUtc.Ticks;
+        }
+    }
+}

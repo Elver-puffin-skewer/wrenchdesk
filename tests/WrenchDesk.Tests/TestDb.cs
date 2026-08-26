@@ -20,6 +20,7 @@ public sealed class TestDb : IDisposable
     public MoneyRepo Money { get; }
     public ScheduleRepo Schedule { get; }
     public BackupService Backups { get; }
+    public WrenchDesk.Services.Google.CalendarSyncService CalendarSync { get; }
 
     public TestDb()
     {
@@ -39,7 +40,21 @@ public sealed class TestDb : IDisposable
         Money = new MoneyRepo(Db, Settings);
         Schedule = new ScheduleRepo(Db);
         Backups = new BackupService(Db, Settings, NullLogger<BackupService>.Instance);
+        CalendarSync = new WrenchDesk.Services.Google.CalendarSyncService(
+            Schedule, Settings, NullLogger<WrenchDesk.Services.Google.CalendarSyncService>.Instance);
     }
+
+    public long NewAppointment(long? customerId = null, string kind = "Pickup",
+        string when = "2026-08-25 09:00", int minutes = 60, string address = "12 Mill Creek Rd") =>
+        Schedule.Insert(new Appointment
+        {
+            CustomerId = customerId,
+            Kind = kind,
+            ScheduledLocal = when,
+            DurationMin = minutes,
+            Address = address,
+            Status = "Scheduled"
+        });
 
     public long NewCustomer(string first = "Dale", string last = "Fenner") =>
         Customers.Insert(new Customer { FirstName = first, LastName = last, Phone = "555-0100" });

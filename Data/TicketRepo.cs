@@ -127,7 +127,7 @@ public class TicketRepo
         using var tx = conn.BeginTransaction();
 
         var prefix = _settings.Get(SettingsStore.TicketPrefix);
-        if (string.IsNullOrWhiteSpace(prefix)) prefix = "WD";
+        if (string.IsNullOrWhiteSpace(prefix)) prefix = "WSE";
 
         // Highest numeric suffix already used with this prefix, so numbering survives edits and deletes.
         var highest = conn.ExecuteScalar<long?>("""
