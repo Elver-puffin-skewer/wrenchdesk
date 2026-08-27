@@ -161,6 +161,72 @@ public class CustomerRepo
             new { id, archived, now = NowUtc() });
     }
 
+    /// <summary>
+    /// Finds the customer a calendar entry is about. Shops write these as "Bill Moore - 256-555-0142",
+    /// so the phone number is the strongest signal and is tried first.
+    ///
+    /// Only ever returns a match when exactly one customer fits. Guessing wrong would attach a job
+    /// to the wrong person's history, which is worse than leaving it unattached for someone to set.
+    /// </summary>
+    public Customer? MatchFromCalendarText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        var candidates = Search(null);
+        if (candidates.Count == 0) return null;
+
+        foreach (var digits in PhoneNumbersIn(text))
+        {
+            var byPhone = candidates
+                .Where(c => SamePhone(c.Phone, digits) || SamePhone(c.PhoneAlt, digits))
+                .ToList();
+
+            if (byPhone.Count == 1) return byPhone[0];
+        }
+
+        // No usable number: fall back to a whole-name match, which has to be unambiguous.
+        var haystack = Normalise(text);
+
+        var byName = candidates
+            .Where(c =>
+            {
+                var full = Normalise($"{c.FirstName} {c.LastName}");
+                var business = Normalise(c.BusinessName);
+
+                return (full.Length >= 5 && haystack.Contains(full))
+                    || (business.Length >= 4 && haystack.Contains(business));
+            })
+            .ToList();
+
+        return byName.Count == 1 ? byName[0] : null;
+    }
+
+    /// <summary>Runs of 10 or 11 digits in the text, which is what a US phone number looks like once punctuation is stripped.</summary>
+    private static IEnumerable<string> PhoneNumbersIn(string text)
+    {
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(text, @"[\d][\d\-\.\s\(\)]{8,}[\d]"))
+        {
+            var digits = new string(m.Value.Where(char.IsDigit).ToArray());
+            if (digits.Length is >= 10 and <= 11) yield return digits;
+        }
+    }
+
+    /// <summary>Compares on the last ten digits, so 256-555-0142 and (256) 555 0142 are the same number.</summary>
+    private static bool SamePhone(string? stored, string digits)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return false;
+
+        var storedDigits = new string(stored.Where(char.IsDigit).ToArray());
+        if (storedDigits.Length < 10) return false;
+
+        return storedDigits[^10..] == digits[^10..];
+    }
+
+    private static string Normalise(string? value) =>
+        new string((value ?? "").ToLowerInvariant().Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray())
+            .Trim();
+
     /// <summary>Lifetime billed and paid for one customer, for the header on their detail page.</summary>
     public (long BilledCents, long PaidCents, int TicketCount) LifetimeTotals(long customerId)
     {

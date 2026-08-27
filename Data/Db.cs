@@ -232,6 +232,17 @@ public class Db
             google_event_id TEXT PRIMARY KEY,
             deleted_utc     TEXT NOT NULL
         );
+        """,
+
+        // 2 -> 3: all-day stops, and keeping the calendar entry's own wording
+        """
+        -- Shops put plenty of work on the calendar as an all-day entry — "Bill Moore, 555-1234"
+        -- against a date, with no particular time. Those are real jobs, not notes.
+        ALTER TABLE appointments ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0;
+
+        -- An entry written in Google says what it says. Keeping the original wording means the
+        -- schedule can show "Bill Moore - 555-1234" instead of inventing "Other - (no customer)".
+        ALTER TABLE appointments ADD COLUMN title TEXT NOT NULL DEFAULT '';
         """
     };
 }

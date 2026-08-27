@@ -433,6 +433,15 @@
                             @(_googleBusy ? "Syncing…" : "Sync now")
                         </button>
                     </div>
+                    <div class="field span-2">
+                        <button class="btn" @onclick="RescanAll" disabled="@_googleBusy">
+                            ↻ Re-scan the whole calendar
+                        </button>
+                        <div class="muted small" style="margin-top:.2rem">
+                            A normal sync only asks Google what has changed. Use this to read the last
+                            90 days from scratch — worth doing once if entries seem to be missing.
+                        </div>
+                    </div>
                 </div>
 
                 <dl class="kv" style="margin-top:.75rem">
@@ -462,9 +471,9 @@
 
                 <div class="alert alert-info" style="margin:1rem 0 0">
                     <strong>How the two directions behave.</strong> Move or cancel a stop in Google and it
-                    changes here. Write one up here and it appears there. If the same stop is edited in
-                    both places between syncs, the most recent edit wins. All-day entries on the calendar
-                    are left alone — a shop stop has a time.
+                    changes here. Write one up here and it appears there. All-day entries come across too,
+                    and are matched to a customer automatically when the wording names one. If the same
+                    stop is edited in both places between syncs, the most recent edit wins.
                 </div>
             }
         }
@@ -904,6 +913,33 @@
             var report = await Sync.SyncAsync(api, _calendarId, CancellationToken.None);
 
             _googleFlash = report.Describe();
+            _googleFlashClass = report.Success ? "alert-ok" : "alert-danger";
+        }
+        catch (Exception ex)
+        {
+            _googleFlash = ex.Message;
+            _googleFlashClass = "alert-danger";
+        }
+
+        _googleBusy = false;
+        LoadGoogle();
+    }
+
+    private async Task RescanAll()
+    {
+        _googleBusy = true;
+        _googleFlash = null;
+        StateHasChanged();
+
+        try
+        {
+            // Google only reports changes since the last token, so a full read needs it cleared.
+            Sync.ForceFullResync();
+
+            var api = await Auth.CreateApiAsync();
+            var report = await Sync.SyncAsync(api, _calendarId, CancellationToken.None);
+
+            _googleFlash = $"Re-scanned the calendar. {report.Describe()}";
             _googleFlashClass = report.Success ? "alert-ok" : "alert-danger";
         }
         catch (Exception ex)

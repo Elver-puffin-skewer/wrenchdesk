@@ -74,16 +74,23 @@ else
             @foreach (var a in day.OrderBy(x => x.Start))
             {
                 <div class="appt @KindClass(a.Kind) @(a.Status == "Done" ? "done" : a.Status == "Canceled" ? "canceled" : "")">
-                    <div class="when">@(a.Start?.ToString("h:mm tt") ?? "—")</div>
+                    <div class="when">@a.WhenLabel</div>
                     <div class="body">
                         <div class="who">
-                            @a.Kind — @(string.IsNullOrWhiteSpace(a.CustomerName) ? "(no customer)" : a.CustomerName)
+                            @a.Heading
                             @if (!string.IsNullOrWhiteSpace(a.TicketNumber))
                             {
                                 <a class="chip mono" style="margin-left:.4rem" href="@($"/tickets/{a.TicketId}")">@a.TicketNumber</a>
                             }
+                            @if (a.CustomerId is null)
+                            {
+                                var linkId = a.Id;
+                                <button class="btn btn-ghost btn-sm no-print" style="margin-left:.3rem"
+                                        @onclick="() => OpenEditor(linkId)">+ link a customer</button>
+                            }
                         </div>
                         <div class="meta">
+                            @if (a.CustomerId is not null) { <span>@a.CustomerName · </span> }
                             @if (!string.IsNullOrWhiteSpace(a.CustomerPhone)) { <span>@a.CustomerPhone · </span> }
                             @(string.IsNullOrWhiteSpace(a.Address) ? "No address on file" : a.Address)
                             @if (!string.IsNullOrWhiteSpace(a.Notes)) { <span> · @a.Notes</span> }
@@ -174,7 +181,20 @@ else
                 </div>
                 <div class="field">
                     <label>Time</label>
-                    <input type="time" @bind="_editTime" />
+                    @if (_editing.IsAllDay)
+                    {
+                        <div class="muted small" style="padding-top:.6rem">All day — no set time</div>
+                    }
+                    else
+                    {
+                        <input type="time" @bind="_editTime" />
+                    }
+                </div>
+                <div class="field span-2">
+                    <label class="check">
+                        <input type="checkbox" @bind="_editing.IsAllDay" />
+                        All day (no particular time)
+                    </label>
                 </div>
                 <div class="field span-2">
                     <label>Address</label>
@@ -342,13 +362,17 @@ else
 
     private void SaveAppointment()
     {
-        if (_selectedCustomer is null)
+        // A stop imported from the calendar may not name anyone we know yet, and forcing a
+        // customer would make those impossible to edit at all.
+        if (_selectedCustomer is null && _editing.Id == 0)
         {
             _editError = "Pick a customer for this stop.";
             return;
         }
 
-        _editing.ScheduledLocal = $"{_editDate:yyyy-MM-dd} {_editTime:HH:mm}";
+        _editing.ScheduledLocal = _editing.IsAllDay
+            ? $"{_editDate:yyyy-MM-dd} 00:00"
+            : $"{_editDate:yyyy-MM-dd} {_editTime:HH:mm}";
 
         if (_editing.Id == 0) Repo.Insert(_editing);
         else Repo.Update(_editing);

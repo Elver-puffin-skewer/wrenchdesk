@@ -265,15 +265,21 @@ public class GoogleCalendarApi : ICalendarApi
         request.MaxResults = 250;
         request.ShowDeleted = true;
 
+        // Set on every read, not just the first. Google ties a sync token to the parameters of the
+        // request that produced it, so flipping this between calls asks for a different shape of
+        // result than the token was issued for. It also expands repeating events into the
+        // individual dates a shop actually cares about.
+        request.SingleEvents = true;
+
         if (!string.IsNullOrWhiteSpace(syncToken))
         {
+            // timeMin cannot be combined with a sync token — Google rejects the request.
             request.SyncToken = syncToken;
         }
         else
         {
             // A first read is bounded, or connecting an old calendar would import years of history.
             request.TimeMinDateTimeOffset = new DateTimeOffset(timeMin ?? DateTime.Now.AddDays(-30));
-            request.SingleEvents = true;
         }
 
         if (!string.IsNullOrWhiteSpace(pageToken)) request.PageToken = pageToken;
@@ -303,22 +309,31 @@ public class GoogleCalendarApi : ICalendarApi
     {
         var timeZone = IanaTimeZone();
 
+        // An all-day event carries dates, not timestamps, and its end date is exclusive.
+        var start = data.IsAllDay
+            ? new EventDateTime { Date = data.Start.ToString("yyyy-MM-dd") }
+            : new EventDateTime
+            {
+                DateTimeDateTimeOffset = new DateTimeOffset(data.Start, TimeZoneInfo.Local.GetUtcOffset(data.Start)),
+                TimeZone = timeZone
+            };
+
+        var end = data.IsAllDay
+            ? new EventDateTime { Date = (data.End <= data.Start ? data.Start.Date.AddDays(1) : data.End.Date).ToString("yyyy-MM-dd") }
+            : new EventDateTime
+            {
+                DateTimeDateTimeOffset = new DateTimeOffset(data.End, TimeZoneInfo.Local.GetUtcOffset(data.End)),
+                TimeZone = timeZone
+            };
+
         return new Event
         {
             Summary = data.Summary,
             Description = data.Description,
             Location = data.Location,
             Status = data.IsCancelled ? "cancelled" : "confirmed",
-            Start = new EventDateTime
-            {
-                DateTimeDateTimeOffset = new DateTimeOffset(data.Start, TimeZoneInfo.Local.GetUtcOffset(data.Start)),
-                TimeZone = timeZone
-            },
-            End = new EventDateTime
-            {
-                DateTimeDateTimeOffset = new DateTimeOffset(data.End, TimeZoneInfo.Local.GetUtcOffset(data.End)),
-                TimeZone = timeZone
-            },
+            Start = start,
+            End = end,
             ExtendedProperties = data.WrenchDeskAppointmentId is null ? null : new Event.ExtendedPropertiesData
             {
                 Private__ = new Dictionary<string, string>

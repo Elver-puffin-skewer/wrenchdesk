@@ -12,7 +12,8 @@ public class ScheduleRepo
     private static string NowUtc() => DateTime.UtcNow.ToString("O");
 
     private const string RowSelect = """
-        SELECT a.id, a.kind, a.scheduled_local, a.duration_min, a.address, a.status, a.notes,
+        SELECT a.id, a.kind, a.title, a.is_all_day, a.scheduled_local, a.duration_min,
+               a.address, a.status, a.notes,
                a.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
                              TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')))) AS customer_name,
@@ -87,9 +88,11 @@ public class ScheduleRepo
         a.CreatedUtc = a.UpdatedUtc = NowUtc();
         return conn.ExecuteScalar<long>("""
             INSERT INTO appointments
-                (customer_id, ticket_id, kind, scheduled_local, duration_min, address, status, notes, created_utc, updated_utc)
+                (customer_id, ticket_id, kind, title, is_all_day, scheduled_local, duration_min,
+                 address, status, notes, created_utc, updated_utc)
             VALUES
-                (@CustomerId, @TicketId, @Kind, @ScheduledLocal, @DurationMin, @Address, @Status, @Notes, @CreatedUtc, @UpdatedUtc);
+                (@CustomerId, @TicketId, @Kind, @Title, @IsAllDay, @ScheduledLocal, @DurationMin,
+                 @Address, @Status, @Notes, @CreatedUtc, @UpdatedUtc);
             SELECT last_insert_rowid();
             """, a);
     }
@@ -100,8 +103,8 @@ public class ScheduleRepo
         a.UpdatedUtc = NowUtc();
         conn.Execute("""
             UPDATE appointments SET
-                customer_id = @CustomerId, ticket_id = @TicketId, kind = @Kind,
-                scheduled_local = @ScheduledLocal, duration_min = @DurationMin,
+                customer_id = @CustomerId, ticket_id = @TicketId, kind = @Kind, title = @Title,
+                is_all_day = @IsAllDay, scheduled_local = @ScheduledLocal, duration_min = @DurationMin,
                 address = @Address, status = @Status, notes = @Notes, updated_utc = @UpdatedUtc
             WHERE id = @Id;
             """, a);
@@ -183,19 +186,24 @@ public class ScheduleRepo
 
         conn.Execute("""
             UPDATE appointments SET
-                kind = @Kind, scheduled_local = @ScheduledLocal, duration_min = @DurationMin,
+                kind = @Kind, title = @Title, is_all_day = @IsAllDay,
+                scheduled_local = @ScheduledLocal, duration_min = @DurationMin,
                 address = @Address, status = @Status, notes = @Notes,
+                customer_id = @CustomerId,
                 updated_utc = @now, google_synced_utc = @now, google_updated = @googleUpdated
             WHERE id = @Id;
             """, new
         {
             appointment.Id,
             appointment.Kind,
+            appointment.Title,
+            appointment.IsAllDay,
             appointment.ScheduledLocal,
             appointment.DurationMin,
             appointment.Address,
             appointment.Status,
             appointment.Notes,
+            appointment.CustomerId,
             now,
             googleUpdated
         });
@@ -209,10 +217,12 @@ public class ScheduleRepo
 
         return conn.ExecuteScalar<long>("""
             INSERT INTO appointments
-                (customer_id, ticket_id, kind, scheduled_local, duration_min, address, status, notes,
+                (customer_id, ticket_id, kind, title, is_all_day, scheduled_local, duration_min,
+                 address, status, notes,
                  created_utc, updated_utc, google_event_id, google_synced_utc, google_updated)
             VALUES
-                (@CustomerId, @TicketId, @Kind, @ScheduledLocal, @DurationMin, @Address, @Status, @Notes,
+                (@CustomerId, @TicketId, @Kind, @Title, @IsAllDay, @ScheduledLocal, @DurationMin,
+                 @Address, @Status, @Notes,
                  @now, @now, @GoogleEventId, @now, @googleUpdated);
             SELECT last_insert_rowid();
             """, new
@@ -220,6 +230,8 @@ public class ScheduleRepo
             appointment.CustomerId,
             appointment.TicketId,
             appointment.Kind,
+            appointment.Title,
+            appointment.IsAllDay,
             appointment.ScheduledLocal,
             appointment.DurationMin,
             appointment.Address,

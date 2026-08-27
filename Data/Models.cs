@@ -240,6 +240,15 @@ public class Appointment
     public long? TicketId { get; set; }
     public string Kind { get; set; } = "Pickup";
 
+    /// <summary>
+    /// What the stop is called. Set when it came from a calendar entry someone typed themselves;
+    /// blank for stops written up here, which build a heading from the customer and kind instead.
+    /// </summary>
+    public string Title { get; set; } = "";
+
+    /// <summary>A whole-day job with no set time. The date still matters; the clock does not.</summary>
+    public bool IsAllDay { get; set; }
+
     /// <summary>Local wall-clock start, stored as yyyy-MM-dd HH:mm.</summary>
     public string ScheduledLocal { get; set; } = "";
 
@@ -292,6 +301,8 @@ public class AppointmentRow
 {
     public long Id { get; set; }
     public string Kind { get; set; } = "";
+    public string Title { get; set; } = "";
+    public bool IsAllDay { get; set; }
     public string ScheduledLocal { get; set; } = "";
     public int DurationMin { get; set; }
     public string Address { get; set; } = "";
@@ -306,6 +317,25 @@ public class AppointmentRow
     public DateTime? Start =>
         DateTime.TryParse(ScheduledLocal, System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.None, out var dt) ? dt : null;
+
+    /// <summary>
+    /// What to put at the top of the stop. A calendar entry's own wording wins, because whoever
+    /// typed it said what they meant; otherwise build one from the kind and who it is for.
+    /// </summary>
+    public string Heading
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Title)) return Title;
+
+            var who = string.IsNullOrWhiteSpace(CustomerName) ? "(no customer)" : CustomerName;
+            return $"{Kind} — {who}";
+        }
+    }
+
+    /// <summary>When it happens, for the left-hand column of the schedule.</summary>
+    public string WhenLabel =>
+        IsAllDay ? "All day" : Start?.ToString("h:mm tt") ?? "—";
 }
 
 public class PaymentRow

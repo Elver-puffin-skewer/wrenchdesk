@@ -111,8 +111,28 @@ public class AppointmentEventMapperTests
         Assert.Equal("5 Oak St", appointment.Address);
         Assert.Equal("abc", appointment.GoogleEventId);
 
-        // The title is where the meaning is, so it must not be dropped.
-        Assert.Contains("Pick up mower from Hank", appointment.Notes);
+        // The wording is where the meaning is, and it becomes the heading rather than being
+        // buried in the notes under an invented "Other - (no customer)".
+        Assert.Equal("Pick up mower from Hank", appointment.Title);
+    }
+
+    [Fact]
+    public void An_all_day_event_maps_to_an_all_day_stop_with_no_length()
+    {
+        var ev = new CalendarEventData
+        {
+            Id = "abc",
+            Summary = "William Moore - 256-456-3781",
+            Start = new DateTime(2026, 8, 11),
+            End = new DateTime(2026, 8, 12),
+            IsAllDay = true
+        };
+
+        var appointment = AppointmentEventMapper.ToNewAppointment(ev);
+
+        Assert.True(appointment.IsAllDay);
+        Assert.Equal(0, appointment.DurationMin);
+        Assert.Equal("William Moore - 256-456-3781", appointment.Title);
     }
 }
 
@@ -315,18 +335,138 @@ public class CalendarSyncTests
     }
 
     [Fact]
-    public async Task All_day_entries_are_left_alone()
+    public async Task All_day_entries_are_imported_as_stops()
     {
         using var h = new TestDb();
         var api = new FakeCalendarApi();
 
-        api.SeedForeignEvent("Shop closed - vacation", new DateTime(2026, 8, 28), allDay: true);
+        // A shop calendar is mostly entries like this: a name against a date, no set time.
+        // Skipping them was why most of a real calendar never arrived.
+        api.SeedForeignEvent("William Moore - 256-456-3781", new DateTime(2026, 8, 28), allDay: true);
 
         var report = await h.CalendarSync.SyncAsync(api, Cal);
 
-        Assert.Equal(1, report.SkippedAllDay);
-        Assert.Equal(0, report.Imported);
-        Assert.Empty(h.Schedule.InRange(new DateTime(2026, 8, 28), new DateTime(2026, 8, 28)));
+        Assert.Equal(1, report.Imported);
+
+        var imported = h.Schedule.InRange(new DateTime(2026, 8, 28), new DateTime(2026, 8, 28)).Single();
+        Assert.True(imported.IsAllDay);
+        Assert.Equal("William Moore - 256-456-3781", imported.Title);
+        Assert.Equal("All day", imported.WhenLabel);
+    }
+
+    [Fact]
+    public async Task An_imported_entry_shows_its_own_wording_not_Other_no_customer()
+    {
+        using var h = new TestDb();
+        var api = new FakeCalendarApi();
+
+        api.SeedForeignEvent("Betty Bowles - 770-856-3482", new DateTime(2026, 8, 14, 9, 0, 0));
+
+        await h.CalendarSync.SyncAsync(api, Cal);
+
+        var row = h.Schedule.InRange(new DateTime(2026, 8, 14), new DateTime(2026, 8, 14)).Single();
+
+        Assert.Equal("Betty Bowles - 770-856-3482", row.Heading);
+        Assert.DoesNotContain("no customer", row.Heading);
+    }
+
+    [Fact]
+    public async Task An_entry_naming_a_known_customer_by_phone_is_linked_to_them()
+    {
+        using var h = new TestDb();
+        var api = new FakeCalendarApi();
+
+        var customerId = h.Customers.Insert(new Customer
+        {
+            FirstName = "William",
+            LastName = "Moore",
+            Phone = "(256) 456-3781"
+        });
+
+        // Written with different punctuation to the record, as it would be in real life.
+        api.SeedForeignEvent("William Moore - 256-456-3781", new DateTime(2026, 8, 11), allDay: true);
+
+        var report = await h.CalendarSync.SyncAsync(api, Cal);
+
+        Assert.Equal(1, report.CustomersMatched);
+
+        var row = h.Schedule.InRange(new DateTime(2026, 8, 11), new DateTime(2026, 8, 11)).Single();
+        Assert.Equal(customerId, row.CustomerId);
+    }
+
+    [Fact]
+    public async Task An_entry_naming_a_known_customer_by_name_is_linked_to_them()
+    {
+        using var h = new TestDb();
+        var api = new FakeCalendarApi();
+
+        var customerId = h.Customers.Insert(new Customer { FirstName = "Sandra", LastName = "Lipton" });
+        api.SeedForeignEvent("Sandra Lipton mower pickup", new DateTime(2026, 8, 14), allDay: true);
+
+        await h.CalendarSync.SyncAsync(api, Cal);
+
+        var row = h.Schedule.InRange(new DateTime(2026, 8, 14), new DateTime(2026, 8, 14)).Single();
+        Assert.Equal(customerId, row.CustomerId);
+    }
+
+    [Fact]
+    public async Task An_ambiguous_name_is_left_unattached_rather_than_guessed()
+    {
+        using var h = new TestDb();
+        var api = new FakeCalendarApi();
+
+        // Two customers could plausibly be meant. Attaching a job to the wrong person's history
+        // is worse than leaving it for someone to set.
+        h.Customers.Insert(new Customer { FirstName = "John", LastName = "Smith" });
+        h.Customers.Insert(new Customer { FirstName = "John", LastName = "Smith", Phone = "256-555-0199" });
+
+        api.SeedForeignEvent("John Smith", new DateTime(2026, 8, 15), allDay: true);
+
+        var report = await h.CalendarSync.SyncAsync(api, Cal);
+
+        Assert.Equal(0, report.CustomersMatched);
+        Assert.Null(h.Schedule.InRange(new DateTime(2026, 8, 15), new DateTime(2026, 8, 15)).Single().CustomerId);
+    }
+
+    [Fact]
+    public async Task A_customer_added_later_gets_picked_up_on_the_next_sync()
+    {
+        using var h = new TestDb();
+        var api = new FakeCalendarApi();
+
+        var eventId = api.SeedForeignEvent("Paula Brumlow 256-901-0499", new DateTime(2026, 8, 11), allDay: true).Id;
+        await h.CalendarSync.SyncAsync(api, Cal);
+
+        Assert.Null(h.Schedule.InRange(new DateTime(2026, 8, 11), new DateTime(2026, 8, 11)).Single().CustomerId);
+
+        // The shop writes them up properly afterwards, then the entry changes in Google.
+        var customerId = h.Customers.Insert(new Customer { FirstName = "Paula", LastName = "Brumlow", Phone = "2569010499" });
+        api.EditLocation(eventId, "14 Elm St");
+
+        var report = await h.CalendarSync.SyncAsync(api, Cal);
+
+        Assert.Equal(1, report.CustomersMatched);
+        Assert.Equal(customerId, h.Schedule.InRange(new DateTime(2026, 8, 11), new DateTime(2026, 8, 11)).Single().CustomerId);
+    }
+
+    [Fact]
+    public async Task An_all_day_stop_written_here_goes_over_as_an_all_day_event()
+    {
+        using var h = new TestDb();
+        var api = new FakeCalendarApi();
+
+        h.Schedule.Insert(new Appointment
+        {
+            CustomerId = h.NewCustomer(),
+            Kind = "Pickup",
+            ScheduledLocal = "2026-08-25 00:00",
+            IsAllDay = true,
+            Status = "Scheduled"
+        });
+
+        await h.CalendarSync.SyncAsync(api, Cal);
+
+        Assert.True(api.Events.Single().IsAllDay);
     }
 
     [Fact]

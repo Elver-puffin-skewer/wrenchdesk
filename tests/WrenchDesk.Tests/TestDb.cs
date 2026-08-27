@@ -41,7 +41,7 @@ public sealed class TestDb : IDisposable
         Schedule = new ScheduleRepo(Db);
         Backups = new BackupService(Db, Settings, NullLogger<BackupService>.Instance);
         CalendarSync = new WrenchDesk.Services.Google.CalendarSyncService(
-            Schedule, Settings, NullLogger<WrenchDesk.Services.Google.CalendarSyncService>.Instance);
+            Schedule, Customers, Settings, NullLogger<WrenchDesk.Services.Google.CalendarSyncService>.Instance);
     }
 
     public long NewAppointment(long? customerId = null, string kind = "Pickup",

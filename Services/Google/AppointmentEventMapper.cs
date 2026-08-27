@@ -25,11 +25,16 @@ public static class AppointmentEventMapper
         return new CalendarEventData
         {
             Id = "",
-            Summary = BuildTitle(row.Kind, row.CustomerName, row.TicketNumber),
+            // A stop that came in from the calendar keeps the words it arrived with, so syncing
+            // back does not quietly rewrite someone's own entry.
+            Summary = string.IsNullOrWhiteSpace(row.Title)
+                ? BuildTitle(row.Kind, row.CustomerName, row.TicketNumber)
+                : row.Title,
             Description = BuildDescription(row),
             Location = row.Address ?? "",
             Start = start,
-            End = start.AddMinutes(duration),
+            End = row.IsAllDay ? start.Date.AddDays(1) : start.AddMinutes(duration),
+            IsAllDay = row.IsAllDay,
             IsCancelled = row.Status == "Canceled",
             WrenchDeskAppointmentId = row.Id
         };
@@ -74,6 +79,24 @@ public static class AppointmentEventMapper
     {
         var changed = false;
 
+        if (appointment.IsAllDay != ev.IsAllDay)
+        {
+            appointment.IsAllDay = ev.IsAllDay;
+            changed = true;
+        }
+
+        // Renaming the entry in Google should rename it here, but only for stops that came from
+        // there — ours build their heading from the customer and kind instead.
+        if (!string.IsNullOrWhiteSpace(appointment.Title))
+        {
+            var summary = ev.Summary?.Trim() ?? "";
+            if (!string.IsNullOrWhiteSpace(summary) && appointment.Title != summary)
+            {
+                appointment.Title = summary;
+                changed = true;
+            }
+        }
+
         var scheduled = FormatLocal(ev.Start);
         if (appointment.ScheduledLocal != scheduled)
         {
@@ -81,9 +104,11 @@ public static class AppointmentEventMapper
             changed = true;
         }
 
-        if (appointment.DurationMin != ev.DurationMinutes)
+        // An all-day stop has no meaningful length, so it is not worth carrying Google's 24 hours.
+        var duration = ev.IsAllDay ? 0 : ev.DurationMinutes;
+        if (appointment.DurationMin != duration)
         {
-            appointment.DurationMin = ev.DurationMinutes;
+            appointment.DurationMin = duration;
             changed = true;
         }
 
@@ -113,28 +138,31 @@ public static class AppointmentEventMapper
     }
 
     /// <summary>
-    /// Turns an event created directly in Google into a new appointment. It has no customer —
-    /// somebody at the shop can attach one afterwards.
+    /// Turns an event created directly in Google into a stop on the board.
+    ///
+    /// A plain calendar entry says nothing about whether it is a pickup or a drop-off, so the
+    /// entry's own wording becomes the heading and the kind stays neutral. That is why this keeps
+    /// the title rather than inventing one: "Bill Moore - 256-555-0142" is what the shop wrote and
+    /// what they will recognise.
     /// </summary>
-    public static Appointment ToNewAppointment(CalendarEventData ev)
+    public static Appointment ToNewAppointment(CalendarEventData ev, Customer? matchedCustomer = null)
     {
-        var notes = string.IsNullOrWhiteSpace(ev.Description)
-            ? ""
-            : ev.Description.Trim();
-
-        // A foreign event's title carries the meaning, so keep it where someone will read it.
-        var kind = ParseKind(ev.Summary) ?? "Other";
+        var notes = string.IsNullOrWhiteSpace(ev.Description) ? "" : ev.Description.Trim();
         var title = ev.Summary?.Trim() ?? "";
-        if (!string.IsNullOrWhiteSpace(title) && ParseKind(ev.Summary) is null)
-            notes = string.IsNullOrWhiteSpace(notes) ? title : $"{title}\n{notes}";
 
         return new Appointment
         {
-            CustomerId = null,
+            // Set only when the entry named someone already on the books. Guessing wrong would
+            // hang a job off the wrong person's history, so an uncertain match stays unattached.
+            CustomerId = matchedCustomer?.Id,
             TicketId = null,
-            Kind = kind,
+
+            Kind = ParseKind(ev.Summary) ?? "Other",
+            Title = Truncate(title, 200),
+            IsAllDay = ev.IsAllDay,
+
             ScheduledLocal = FormatLocal(ev.Start),
-            DurationMin = ev.DurationMinutes,
+            DurationMin = ev.IsAllDay ? 0 : ev.DurationMinutes,
             Address = ev.Location ?? "",
             Status = ev.IsCancelled ? "Canceled" : "Scheduled",
             Notes = Truncate(notes, 500),

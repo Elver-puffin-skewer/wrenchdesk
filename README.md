@@ -346,12 +346,18 @@ syncing pauses until you press Connect again — it will not sit there failing q
 | Stop deleted here | The Google event is deleted |
 | Event moved in Google | The appointment moves here |
 | Event cancelled/deleted in Google | The appointment is removed here |
-| New event added in Google | Becomes an appointment here, with no customer attached — open it and pick one |
+| New event added in Google | Becomes a stop here, keeping the entry's own wording as its heading |
+| An entry naming a known customer | Linked to them automatically, matched on phone number or full name |
+| An entry naming nobody on the books | Left unattached — there is a **+ link a customer** button on the stop |
+| All-day entry on the calendar | Comes across as an all-day stop. Plenty of shop work is booked that way |
 | Same stop edited in both places between syncs | The most recent edit wins |
-| All-day entry on the calendar | Left alone — a shop stop has a time |
 
 Renaming an event's prefix in Google (say `Pickup — Dale` to `Delivery — Dale`) changes the kind
 here too.
+
+**If entries seem to be missing**, press **Re-scan the whole calendar** in Settings. A normal sync
+only asks Google what has changed since last time, so anything the previous version passed over
+would never be offered again on its own.
 
 ### Why it polls rather than updating instantly
 

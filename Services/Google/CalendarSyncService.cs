@@ -11,7 +11,7 @@ public record SyncReport
     public int Imported { get; set; }
     public int PulledUpdates { get; set; }
     public int DeletedLocally { get; set; }
-    public int SkippedAllDay { get; set; }
+    public int CustomersMatched { get; set; }
     public int Conflicts { get; set; }
     public string? Error { get; set; }
     public bool NeedsReconnect { get; set; }
@@ -32,7 +32,7 @@ public record SyncReport
         if (Imported > 0) parts.Add($"{Imported} brought in from Google");
         if (PulledUpdates > 0) parts.Add($"{PulledUpdates} updated from Google");
         if (DeletedLocally > 0) parts.Add($"{DeletedLocally} cancelled in Google");
-        if (SkippedAllDay > 0) parts.Add($"{SkippedAllDay} all-day event(s) ignored");
+        if (CustomersMatched > 0) parts.Add($"{CustomersMatched} matched to a customer");
         return string.Join(", ", parts);
     }
 }
@@ -49,18 +49,32 @@ public record SyncReport
 public class CalendarSyncService
 {
     private readonly ScheduleRepo _schedule;
+    private readonly CustomerRepo _customers;
     private readonly SettingsStore _settings;
     private readonly ILogger<CalendarSyncService> _log;
 
-    /// <summary>How far back a first-time sync reads, so old finished jobs are not dragged in.</summary>
-    private static readonly TimeSpan InitialWindow = TimeSpan.FromDays(30);
+    /// <summary>
+    /// How far back a first-time or forced read goes. Wide enough to pick up a season's work,
+    /// bounded so connecting a years-old calendar does not import all of it.
+    /// </summary>
+    private static readonly TimeSpan InitialWindow = TimeSpan.FromDays(90);
 
-    public CalendarSyncService(ScheduleRepo schedule, SettingsStore settings, ILogger<CalendarSyncService> log)
+    public CalendarSyncService(ScheduleRepo schedule, CustomerRepo customers, SettingsStore settings,
+        ILogger<CalendarSyncService> log)
     {
         _schedule = schedule;
+        _customers = customers;
         _settings = settings;
         _log = log;
     }
+
+    /// <summary>
+    /// Forgets the incremental position so the next sync reads the whole window again.
+    ///
+    /// Needed after a change to what gets imported: Google only reports what has altered since the
+    /// last token, so entries that were previously passed over would never be offered again.
+    /// </summary>
+    public void ForceFullResync() => _settings.Set(SettingsStore.GoogleSyncToken, "");
 
     public async Task<SyncReport> SyncAsync(ICalendarApi api, string calendarId, CancellationToken ct = default)
     {
@@ -228,18 +242,18 @@ public class CalendarSyncService
             return;
         }
 
-        if (ev.IsAllDay)
-        {
-            // A stop has a time. An all-day entry is somebody's note to themselves.
-            report.SkippedAllDay++;
-            return;
-        }
-
         if (existing is null)
         {
-            var appointment = AppointmentEventMapper.ToNewAppointment(ev);
+            // Shops write plenty of work as an all-day entry against a date, so those come in too
+            // — they are jobs, not notes. Skipping them was the reason most of a shop calendar
+            // never arrived.
+            var matched = _customers.MatchFromCalendarText($"{ev.Summary} {ev.Description}");
+
+            var appointment = AppointmentEventMapper.ToNewAppointment(ev, matched);
             _schedule.InsertFromGoogle(appointment, ev.Updated);
+
             report.Imported++;
+            if (matched is not null) report.CustomersMatched++;
             return;
         }
 
@@ -252,6 +266,17 @@ public class CalendarSyncService
         {
             report.Conflicts++;
             return;
+        }
+
+        if (existing.CustomerId is null && !string.IsNullOrWhiteSpace(existing.Title))
+        {
+            // The customer may have been added to the books after the entry first came across.
+            var matched = _customers.MatchFromCalendarText($"{ev.Summary} {ev.Description}");
+            if (matched is not null)
+            {
+                existing.CustomerId = matched.Id;
+                report.CustomersMatched++;
+            }
         }
 
         if (AppointmentEventMapper.ApplyToExisting(existing, ev))
