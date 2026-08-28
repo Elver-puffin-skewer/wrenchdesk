@@ -279,6 +279,13 @@ public class SettingsStore
 
     // Google Calendar. The client id and secret come from the shop's own Google Cloud project —
     // they are never shipped in the repo.
+    /// <summary>
+    /// A service account key file. When present it is used instead of the sign-in flow, which
+    /// skips Google's consent screen entirely — no branding, no domain, no verification, and no
+    /// connection that expires.
+    /// </summary>
+    public const string GoogleServiceAccountJson = "google.service_account_json";
+
     public const string GoogleClientId = "google.client_id";
     public const string GoogleClientSecret = "google.client_secret";
     public const string GoogleCalendarId = "google.calendar_id";
@@ -318,6 +325,7 @@ public class SettingsStore
         [BackupLastError] = "",
 
         // Calendar sync stays off until the shop connects an account.
+        [GoogleServiceAccountJson] = "",
         [GoogleClientId] = "",
         [GoogleClientSecret] = "",
         [GoogleCalendarId] = "",

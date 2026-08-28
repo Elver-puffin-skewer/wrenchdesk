@@ -295,104 +295,83 @@
                         to use its own credentials, so there is no way around this bit.
                     </p>
 
-                    <div class="alert alert-danger">
-                        <strong>The one thing that trips everyone up.</strong> Google asks for a
-                        <em>domain</em> in one place and a <em>redirect address</em> in another. They are
-                        different fields on different pages, and putting the WrenchDesk address in the wrong
-                        one gives you:
-                        <div class="mono small" style="margin:.4rem 0">Invalid URL: cannot contain a localhost domain</div>
-                        If you see that, you are on the <strong>Branding</strong> page, in the
-                        <strong>App domain</strong> section. The WrenchDesk address does not go there — it
-                        goes under <strong>Credentials</strong>, in step 5 below.
-                    </div>
-
-                    <h4 style="margin-top:1rem">What do I put for Authorised domain?</h4>
+                    <h4 style="margin-top:1rem">Connecting it — the short way</h4>
                     <p>
-                        Ideally nothing — leave it empty. That box is normally only demanded because of the
-                        three above it: <em>Application home page</em>, <em>Privacy policy link</em> and
-                        <em>Terms of service link</em>. Clear all three and it usually stops asking.
-                        WrenchDesk runs on this PC, not on a website, so there is no domain to give it.
+                        Give WrenchDesk its own Google address and share the shop calendar with it, the same
+                        as sharing with a colleague. There is <strong>no sign-in screen to fill in, no website
+                        or domain to supply, no verification, and nothing that expires</strong>.
                     </p>
-                    <p>
-                        <strong>If Google still insists</strong>, it wants a plain domain you actually own —
-                        <span class="mono">waltssmallengines.com</span>, not
-                        <span class="mono">https://www.waltssmallengines.com</span>. If the shop has a website,
-                        use its domain. If it does not, do not invent one: a domain you do not own is shown on
-                        the sign-in screen as if it were yours, and you could never prove ownership if Google
-                        asked. Use the <strong>Desktop app</strong> route below instead.
-                    </p>
-
-                    <div class="alert alert-ok">
-                        <strong>The way round it: choose &ldquo;Desktop app&rdquo; instead.</strong>
-                        When creating the OAuth client, set <strong>Application type</strong> to
-                        <strong>Desktop app</strong> rather than <em>Web application</em>. That is the type
-                        Google intends for a program installed on a PC, which is exactly what this is. It needs
-                        no website, no domain, and no redirect address typed in at all — Google allows a
-                        program on your own machine to receive the sign-in automatically.
-                        <div class="small" style="margin-top:.35rem">
-                            It also means nothing breaks if you ever change the port WrenchDesk runs on, which
-                            a Web application client would.
-                        </div>
-                    </div>
-
-                    <p class="muted small">
-                        On the Branding page you only need <strong>App name</strong>,
-                        <strong>User support email</strong> and <strong>Developer contact email</strong>.
-                    </p>
-
                     <ol class="help-steps">
                         <li>
                             Go to <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>
-                            and sign in with the account that owns the shop calendar.
+                            and sign in with the account that owns the shop calendar. Create a project and
+                            call it <strong>WrenchDesk</strong>.
                         </li>
-                        <li>Create a project. Call it <strong>WrenchDesk</strong>.</li>
                         <li>
                             <strong>APIs &amp; Services → Library</strong>, search for
                             <strong>Google Calendar API</strong>, press <strong>Enable</strong>.
                         </li>
                         <li>
-                            <strong>APIs &amp; Services → OAuth consent screen</strong>. Choose
-                            <strong>External</strong>. Put the app name and your own email in the contact
-                            boxes. <strong>Leave App domain and Authorised domains blank</strong> — see the
-                            warning above.
+                            <strong>APIs &amp; Services → Credentials → Create credentials →
+                            Service account</strong>. Give it any name. Press through to the end; you can skip
+                            the optional steps.
                         </li>
                         <li>
-                            <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client
-                            ID</strong>. For <strong>Application type</strong> choose
-                            <strong>Desktop app</strong> — it needs no domain and no redirect address.
-                            <div class="small" style="margin-top:.3rem">
-                                If you pick <em>Web application</em> instead, you must also paste the address
-                                <a href="/settings">Settings</a> shows you into
-                                <strong>Authorised redirect URIs</strong> — the one place a localhost address
-                                is accepted.
-                            </div>
+                            Click the service account you just made, open the <strong>Keys</strong> tab, then
+                            <strong>Add key → Create new key → JSON</strong>. A file downloads.
                         </li>
                         <li>
-                            Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into
-                            <a href="/settings">Settings</a>, press <strong>Save credentials</strong>, then
-                            <strong>Connect Google account</strong>.
+                            Open that file in Notepad, select everything, and paste it into
+                            <a href="/settings">Settings</a> under <strong>Use a key file</strong>. Press
+                            <strong>Save key file</strong>.
                         </li>
-                        <li>Pick or create the calendar, then switch syncing on.</li>
+                        <li>
+                            Settings now shows an address ending
+                            <span class="mono">…iam.gserviceaccount.com</span>. In
+                            <a href="https://calendar.google.com" target="_blank">Google Calendar</a>, hover
+                            the shop calendar in the left list → <strong>⋮</strong> →
+                            <strong>Settings and sharing</strong> → <strong>Share with specific people or
+                            groups</strong> → <strong>Add people</strong> → paste that address and set it to
+                            <strong>Make changes to events</strong>.
+                        </li>
+                        <li>Back in Settings, load the calendar list, pick the calendar, and switch syncing on.</li>
                     </ol>
+
+                    <div class="alert alert-info">
+                        <strong>Why this is better than signing in.</strong> The sign-in route makes you fill
+                        in Google's consent screen, which asks for a website domain a repair shop has no
+                        reason to own, and it cuts the connection every 7 days unless the app is published.
+                        The key file has none of that. Nothing about it expires.
+                    </div>
+
+                    <div class="alert alert-warn">
+                        <strong>The calendar list is empty?</strong> The sharing step was missed, or was done
+                        on a different calendar. A service account can only see calendars explicitly shared
+                        with its address — which is also what keeps it away from anything personal.
+                    </div>
+
+                    <h4>If you signed in with Google instead</h4>
                     <p>
-                        <strong>All-day entries count.</strong> Plenty of shop work goes on the calendar as a
-                        name against a date with no set time — those come across as stops and show as
-                        <em>All day</em>. If the entry names someone already on your books, by name or phone
-                        number, they get attached automatically; otherwise there's a
-                        <strong>+ link a customer</strong> button on the stop.
+                        That route still works and is kept for anyone already using it, but it has two traps.
                     </p>
                     <p>
-                        <strong>Entries missing?</strong> A normal sync only asks Google what has changed since
-                        last time. Press <strong>Re-scan the whole calendar</strong> in
-                        <a href="/settings">Settings</a> to read the last 90 days from scratch.
+                        <strong>Authorised domain.</strong> Google's Branding page asks for a domain, and
+                        rejects a localhost address with
+                        <span class="mono">Invalid URL: cannot contain a localhost domain</span>. Clear
+                        <em>Application home page</em>, <em>Privacy policy link</em> and <em>Terms of service
+                        link</em> and the domain box usually stops being required. Never invent a domain: one
+                        you do not own is shown on the sign-in screen as though it were yours.
                     </p>
+                    <p>
+                        <strong>Error 403: access_denied.</strong> The project is still in
+                        <em>Testing</em>, which only lets approved testers in. Publish the app on the
+                        <strong>Audience</strong> page — that also stops the 7-day expiry.
+                    </p>
+
                     <div class="alert alert-warn" style="margin-bottom:0">
-                        <strong>Then one last thing.</strong> On the OAuth consent screen page, press
-                        <strong>Publish app</strong> to move it from <em>Testing</em> to <em>In production</em>.
-                        Left on Testing, Google cuts the connection every 7 days and syncing quietly stops.
-                        The "unverified app" warning you get when connecting is expected — press
-                        <strong>Advanced</strong>, then <strong>Go to WrenchDesk (unsafe)</strong>. It is your
-                        own project, used only by your own account.
+                        Publishing also means an "unverified app" warning when connecting, which is expected:
+                        press <strong>Advanced</strong>, then <strong>Go to WrenchDesk (unsafe)</strong>. It is
+                        your own project used by your own account. None of this applies to the key file route.
                     </div>
                 </div>
             </section>
@@ -736,7 +715,8 @@
             "print estimate invoice paper signature receipt"),
         new("trouble", "🩺", "When something's wrong",
             "problem broken error wont start closed window unknown publisher taskbar pin totals wrong undo help stuck "
-          + "403 access_denied denied testers verification unverified publish blocked forbidden"),
+          + "403 access_denied denied testers verification unverified publish blocked forbidden "
+          + "domain authorised authorized branding consent api key service account json"),
         new("updating", "⬆", "Updating and removing",
             "update upgrade new version uninstall remove delete newest download")
     };

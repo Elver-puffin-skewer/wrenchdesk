@@ -309,7 +309,33 @@ appointment here. Point it at a personal calendar and you would pull in dentist 
 birthdays. Settings has a **Create a new "Walt's Small Engines — Schedule" calendar** button that
 makes a clean one in a single click; use that unless you already keep a shop calendar.
 
-### One-time setup (about ten minutes, free)
+### The short way: a key file (recommended)
+
+Give WrenchDesk its own Google address and share the shop calendar with it, like sharing with a
+colleague. **No consent screen, no website or domain, no verification, and nothing that expires.**
+
+1. [console.cloud.google.com](https://console.cloud.google.com), signed in with the account that
+   owns the shop calendar. Create a project called **WrenchDesk**.
+2. **APIs & Services → Library** → **Google Calendar API** → **Enable**.
+3. **APIs & Services → Credentials → Create credentials → Service account**. Any name; skip the
+   optional steps.
+4. Click into it → **Keys** tab → **Add key → Create new key → JSON**. A file downloads.
+5. Open that file in Notepad, copy everything, and paste it into **Settings → Use a key file**.
+6. Settings shows an address ending `...iam.gserviceaccount.com`. In Google Calendar, hover the
+   shop calendar → **⋮** → **Settings and sharing** → **Share with specific people** → add that
+   address with **Make changes to events**.
+7. Back in Settings, load the calendar list, pick the calendar, switch syncing on.
+
+If the calendar list comes back empty, step 6 was missed or was done on a different calendar — a
+service account only sees calendars explicitly shared with it, which is also what keeps it away
+from anything personal.
+
+### The long way: signing in with Google
+
+Kept for anyone already using it. This is the route that asks for a consent screen, a website
+domain, and publishing — none of which a repair shop has any use for.
+
+#### One-time setup (about ten minutes, free)
 
 Google requires every business to use its own credentials — they cannot be shipped inside the app,
 which is also why this repo can be public.

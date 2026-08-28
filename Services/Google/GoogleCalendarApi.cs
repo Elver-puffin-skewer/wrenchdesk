@@ -76,7 +76,77 @@ public class GoogleAuthService
         !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleClientId)) &&
         !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleClientSecret));
 
-    public bool IsConnected => !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleTokenJson));
+    /// <summary>True when a service account key has been pasted in, which needs no sign-in at all.</summary>
+    public bool UsesServiceAccount =>
+        !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleServiceAccountJson));
+
+    public bool IsConnected =>
+        UsesServiceAccount || !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleTokenJson));
+
+    /// <summary>
+    /// The address the shop shares its calendar with. A service account is a robot account with its
+    /// own email; giving that address access to the calendar is what lets WrenchDesk in — the same
+    /// gesture as sharing with a colleague, and reversible the same way.
+    /// </summary>
+    public string ServiceAccountEmail
+    {
+        get
+        {
+            var json = _settings.Get(SettingsStore.GoogleServiceAccountJson);
+            if (string.IsNullOrWhiteSpace(json)) return "";
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                return doc.RootElement.TryGetProperty("client_email", out var email)
+                    ? email.GetString() ?? ""
+                    : "";
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return "";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks a pasted key file before saving it, so a wrong paste is caught here rather than
+    /// surfacing later as an authentication failure. Returns null when the key looks usable.
+    /// </summary>
+    public static string? ValidateServiceAccountJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return "Paste the contents of the key file you downloaded from Google.";
+
+        System.Text.Json.JsonDocument doc;
+        try
+        {
+            doc = System.Text.Json.JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "That does not look like the key file. Open the .json file Google downloaded and "
+                 + "copy everything in it, including the { and } at the ends.";
+        }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+
+            var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
+            if (type != "service_account")
+                return "That is the wrong kind of key file. It should say \"type\": \"service_account\" "
+                     + "inside. A client ID file from the OAuth section will not work here.";
+
+            if (!root.TryGetProperty("client_email", out _))
+                return "That key file has no account address in it, so the calendar could not be shared with it.";
+
+            if (!root.TryGetProperty("private_key", out _))
+                return "That key file is missing its private key. Download it again from Google.";
+        }
+
+        return null;
+    }
 
     public GoogleAuthorizationCodeFlow CreateFlow() =>
         new(new GoogleAuthorizationCodeFlow.Initializer
@@ -117,6 +187,9 @@ public class GoogleAuthService
     /// <summary>Builds an authorised calendar client, or throws if the shop needs to reconnect.</summary>
     public async Task<ICalendarApi> CreateApiAsync(CancellationToken ct = default)
     {
+        // A service account needs no sign-in and no consent screen, so try it first.
+        if (UsesServiceAccount) return CreateServiceAccountApi();
+
         if (!IsConfigured)
             throw new CalendarAuthException("Google Calendar is not set up yet. Add the client ID and secret in Settings.");
 
@@ -152,11 +225,52 @@ public class GoogleAuthService
         return new GoogleCalendarApi(service);
     }
 
+    /// <summary>
+    /// Builds a client that authenticates as the service account. There is no browser step and
+    /// nothing to renew — the key file is the credential, and it does not expire.
+    /// </summary>
+    private ICalendarApi CreateServiceAccountApi()
+    {
+        var json = _settings.Get(SettingsStore.GoogleServiceAccountJson);
+
+        try
+        {
+            // Built from the two fields explicitly rather than handing Google the whole file:
+            // the blanket loader is deprecated, and this makes it obvious what is actually used.
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var email = root.GetProperty("client_email").GetString()
+                ?? throw new InvalidOperationException("The key file has no account address in it.");
+            var privateKey = root.GetProperty("private_key").GetString()
+                ?? throw new InvalidOperationException("The key file has no private key in it.");
+
+            var credential = new ServiceAccountCredential(
+                new ServiceAccountCredential.Initializer(email) { Scopes = Scopes }
+                    .FromPrivateKey(privateKey));
+
+            var service = new CalendarService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "WrenchDesk"
+            });
+
+            return new GoogleCalendarApi(service);
+        }
+        catch (Exception ex)
+        {
+            throw new CalendarAuthException(
+                "The Google key file was not accepted. Check it was pasted whole, and that the "
+              + "Calendar API is switched on for that project. " + ex.Message, ex);
+        }
+    }
+
     public void Disconnect()
     {
         _settings.SetAll(new Dictionary<string, string>
         {
             [SettingsStore.GoogleTokenJson] = "",
+            [SettingsStore.GoogleServiceAccountJson] = "",
             [SettingsStore.GoogleSyncToken] = "",
             [SettingsStore.GoogleSyncEnabled] = "false",
             [SettingsStore.GoogleCalendarId] = "",

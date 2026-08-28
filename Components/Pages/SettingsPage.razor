@@ -319,55 +319,116 @@
             </div>
         }
 
-        @if (!_googleConfigured)
+        @if (!_googleConnected)
         {
-            <div class="alert alert-info">
-                <strong>One-time setup.</strong> Google requires each shop to use its own credentials —
-                they cannot be shipped inside the app. <a href="/help#google">Help</a> explains what this
-                does and what to watch for; the step-by-step is in the setup guide. Ten minutes, no cost.
+            <div class="btn-row" style="margin-bottom:1rem">
+                <button class="btn @(_authMode == AuthMode.Key ? "btn-primary" : "")"
+                        @onclick="() => _authMode = AuthMode.Key">Use a key file</button>
+                <button class="btn @(_authMode == AuthMode.SignIn ? "btn-primary" : "")"
+                        @onclick="() => _authMode = AuthMode.SignIn">Sign in with Google</button>
             </div>
         }
 
-        <div class="form-grid">
-            <div class="field">
-                <label>Client ID</label>
-                <input type="text" @bind="_googleClientId" placeholder="…apps.googleusercontent.com" />
+        @if (_usesServiceAccount || (!_googleConnected && _authMode == AuthMode.Key))
+        {
+            <div class="alert alert-info">
+                <strong>The simpler route, and the one to use.</strong> A key file skips Google's sign-in
+                screen completely — no consent screen to fill in, no website or domain to supply, no
+                verification, and nothing that expires after 7 days. You give WrenchDesk its own address and
+                share the shop calendar with it, the same as sharing with a colleague.
+                <a href="/help#google">Step by step in Help.</a>
             </div>
-            <div class="field">
-                <label>Client secret</label>
-                <input type="password" @bind="_googleClientSecret" placeholder="GOCSPX-…" />
-            </div>
-            <div class="field span-2">
-                <div class="muted small">
-                    Paste this into Google Cloud under
-                    <strong>Credentials → your OAuth client → Authorised redirect URIs</strong>:
-                </div>
-                <div class="mono" style="margin:.35rem 0;padding:.5rem .7rem;background:var(--cream);border-radius:6px">
-                    @_redirectUri
-                </div>
-                <div class="muted small">
-                    It does <em>not</em> go in <strong>App domain</strong> or <strong>Authorised
-                    domains</strong> on the consent screen — Google rejects localhost there. Leave those
-                    boxes empty. <a href="/help#google">More in Help</a>.
-                </div>
-            </div>
-        </div>
 
-        <div class="btn-row" style="margin-bottom:.5rem">
-            <button class="btn" @onclick="SaveGoogleCredentials">Save credentials</button>
-
-            @if (_googleConfigured)
+            @if (_usesServiceAccount)
             {
-                <a class="btn btn-primary" href="/google/connect">
-                    @(_googleConnected ? "Reconnect Google account" : "Connect Google account")
-                </a>
+                <div class="alert alert-ok">
+                    <strong>Key file loaded.</strong> Share your shop calendar with this address in Google
+                    Calendar, giving it <em>Make changes to events</em>:
+                    <div class="mono" style="margin:.45rem 0;padding:.5rem .7rem;background:#fff;border-radius:6px;word-break:break-all">
+                        @_serviceAccountEmail
+                    </div>
+                    Google Calendar → hover the calendar → <strong>⋮</strong> →
+                    <strong>Settings and sharing</strong> → <strong>Share with specific people</strong> →
+                    <strong>Add people</strong>. Until you do, the calendar list below will be empty.
+                </div>
+            }
+            else
+            {
+                <div class="field">
+                    <label>Key file contents</label>
+                    <textarea rows="6" placeholder='{ "type": "service_account", "project_id": … }'
+                              @bind="_serviceAccountJson"></textarea>
+                    <div class="muted small" style="margin-top:.2rem">
+                        Open the <span class="mono">.json</span> file Google downloaded in Notepad, select all,
+                        and paste it here. It is stored with your shop data and never leaves this PC.
+                    </div>
+                </div>
             }
 
-            @if (_googleConnected)
+            <div class="btn-row" style="margin-bottom:.5rem">
+                @if (!_usesServiceAccount)
+                {
+                    <button class="btn btn-primary" @onclick="SaveServiceAccount">Save key file</button>
+                }
+                else
+                {
+                    <button class="btn btn-danger" @onclick="() => _confirmDisconnect = true">Remove key file</button>
+                }
+            </div>
+        }
+
+        @if (!_usesServiceAccount && (_googleConnected || _authMode == AuthMode.SignIn))
+        {
+            @if (!_googleConfigured)
             {
-                <button class="btn btn-danger" @onclick="() => _confirmDisconnect = true">Disconnect</button>
+                <div class="alert alert-warn">
+                    <strong>The longer route.</strong> This one needs Google's consent screen filled in, which
+                    asks for a website domain the shop probably does not have, and Google cuts the connection
+                    every 7 days unless the app is published. The key file above avoids all of that.
+                </div>
             }
-        </div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label>Client ID</label>
+                    <input type="text" @bind="_googleClientId" placeholder="…apps.googleusercontent.com" />
+                </div>
+                <div class="field">
+                    <label>Client secret</label>
+                    <input type="password" @bind="_googleClientSecret" placeholder="GOCSPX-…" />
+                </div>
+                <div class="field span-2">
+                    <div class="muted small">
+                        For a <strong>Web application</strong> client, paste this under
+                        <strong>Credentials → your OAuth client → Authorised redirect URIs</strong>.
+                        A <strong>Desktop app</strong> client needs nothing pasted anywhere.
+                    </div>
+                    <div class="mono" style="margin:.35rem 0;padding:.5rem .7rem;background:var(--cream);border-radius:6px">
+                        @_redirectUri
+                    </div>
+                    <div class="muted small">
+                        It does <em>not</em> go in <strong>App domain</strong> or <strong>Authorised
+                        domains</strong> — Google rejects localhost there.
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-row" style="margin-bottom:.5rem">
+                <button class="btn" @onclick="SaveGoogleCredentials">Save credentials</button>
+
+                @if (_googleConfigured)
+                {
+                    <a class="btn btn-primary" href="/google/connect">
+                        @(_googleConnected ? "Reconnect Google account" : "Connect Google account")
+                    </a>
+                }
+
+                @if (_googleConnected)
+                {
+                    <button class="btn btn-danger" @onclick="() => _confirmDisconnect = true">Disconnect</button>
+                }
+            </div>
+        }
 
         @if (_googleConnected)
         {
@@ -526,7 +587,8 @@
 
 @if (_confirmDisconnect)
 {
-    <Modal Title="Disconnect Google Calendar?" OnClose="() => _confirmDisconnect = false">
+    <Modal Title="@(_usesServiceAccount ? "Remove the key file?" : "Disconnect Google Calendar?")"
+           OnClose="() => _confirmDisconnect = false">
         <ChildContent>
             <p>
                 Syncing stops and the saved Google sign-in is removed. Your appointments stay here,
@@ -743,6 +805,13 @@
     [Parameter, SupplyParameterFromQuery(Name = "detail")]
     public string? GoogleOutcomeDetail { get; set; }
 
+    private enum AuthMode { Key, SignIn }
+
+    private AuthMode _authMode = AuthMode.Key;
+    private bool _usesServiceAccount;
+    private string _serviceAccountJson = "";
+    private string _serviceAccountEmail = "";
+
     private bool _googleConfigured;
     private bool _googleConnected;
     private bool _needsReconnect;
@@ -768,6 +837,11 @@
     {
         _googleConfigured = Auth.IsConfigured;
         _googleConnected = Auth.IsConnected;
+        _usesServiceAccount = Auth.UsesServiceAccount;
+        _serviceAccountEmail = Auth.ServiceAccountEmail;
+
+        // Someone already signed in the old way should land on that tab, not be told to start over.
+        if (_googleConnected && !_usesServiceAccount) _authMode = AuthMode.SignIn;
         _needsReconnect = Settings.GetBool(SettingsStore.GoogleNeedsReconnect);
         _syncEnabled = Settings.GetBool(SettingsStore.GoogleSyncEnabled);
 
@@ -819,6 +893,26 @@
       + "still set to Testing. Open the Google Cloud console, go to APIs & Services \u2192 OAuth "
       + "consent screen \u2192 Audience, and press PUBLISH APP. That also stops Google cutting the "
       + "connection every 7 days. (If you simply pressed Cancel, nothing changed \u2014 try again.)";
+
+    private void SaveServiceAccount()
+    {
+        var problem = GoogleAuthService.ValidateServiceAccountJson(_serviceAccountJson);
+        if (problem is not null)
+        {
+            _googleFlash = problem;
+            _googleFlashClass = "alert-danger";
+            return;
+        }
+
+        Settings.Set(SettingsStore.GoogleServiceAccountJson, _serviceAccountJson.Trim());
+        _serviceAccountJson = "";
+
+        LoadGoogle();
+
+        _googleFlash = $"Key file saved. Now share the shop calendar with {_serviceAccountEmail}, "
+                     + "then load the calendar list below.";
+        _googleFlashClass = "alert-ok";
+    }
 
     private void SaveGoogleCredentials()
     {
