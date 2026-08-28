@@ -340,6 +340,14 @@ which is also why this repo can be public.
    **Save credentials**, then **Connect Google account** and approve the consent screen.
 7. Pick or create the calendar, then tick **Keep this calendar and the shop schedule in step**.
 
+### Error 403: access_denied
+
+If connecting gives **"Error 403: access_denied"**, or *"can only be accessed by developer-approved
+testers"*, the project is still in **Testing**. Fix it the same way as below — publish the app.
+
+(As a stopgap you can add the shop's Google address under **Audience → Test users → + ADD USERS**,
+which works immediately but must be redone every 7 days.)
+
 ### Important: set the consent screen to "In production"
 
 While the OAuth consent screen is left in **Testing**, Google expires the connection **every 7

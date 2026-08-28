@@ -535,6 +535,27 @@
                             sales tax rate is shown on the ticket itself.
                         </dd>
 
+                        <dt>Google says &ldquo;Error 403: access_denied&rdquo; or &ldquo;only developer-approved testers&rdquo;</dt>
+                        <dd>
+                            Your Google Cloud project is still set to <strong>Testing</strong>, which only lets
+                            accounts on a tester list connect. In the Google Cloud console go to
+                            <strong>APIs &amp; Services → OAuth consent screen → Audience</strong> and press
+                            <strong>PUBLISH APP</strong>. That fixes it permanently, and also stops Google
+                            cutting the connection every 7 days.
+                            <div class="small" style="margin-top:.35rem">
+                                Google will say the app &ldquo;needs verification&rdquo; — that is expected and
+                                does not stop it working. Verification is for apps offered to the public; this
+                                is your own project used by your own account. When connecting you will get a
+                                <em>Google hasn't verified this app</em> screen: press <strong>Advanced</strong>,
+                                then <strong>Go to WrenchDesk (unsafe)</strong>.
+                            </div>
+                            <div class="small" style="margin-top:.35rem">
+                                In a hurry? On the same page you can instead add the shop's Google address under
+                                <strong>Test users → + ADD USERS</strong>. That works straight away but has to be
+                                redone every 7 days, so publishing is the better fix.
+                            </div>
+                        </dd>
+
                         <dt>Google Calendar stopped syncing</dt>
                         <dd>
                             Almost always the 7-day expiry — see <a href="#google">Google Calendar</a> above.
@@ -667,7 +688,8 @@
         new("printing", "🖨", "Printing estimates and invoices",
             "print estimate invoice paper signature receipt"),
         new("trouble", "🩺", "When something's wrong",
-            "problem broken error wont start closed window unknown publisher taskbar pin totals wrong undo help stuck"),
+            "problem broken error wont start closed window unknown publisher taskbar pin totals wrong undo help stuck "
+          + "403 access_denied denied testers verification unverified publish blocked forbidden"),
         new("updating", "⬆", "Updating and removing",
             "update upgrade new version uninstall remove delete newest download")
     };

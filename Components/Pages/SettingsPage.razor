@@ -798,13 +798,27 @@
         (_googleFlash, _googleFlashClass) = GoogleOutcome switch
         {
             "connected" => ("Connected to Google. Now pick which calendar to sync with.", "alert-ok"),
-            "denied" => ("Google sign-in was cancelled, so nothing changed.", "alert-warn"),
+            // Google sends access_denied both when someone presses Cancel and when the project is
+            // still in Testing and the account is not on the tester list. The second is far more
+            // likely while setting up, and looks nothing like a cancellation to the person hitting it.
+            "denied" => (DeniedExplanation, "alert-danger"),
             "notconfigured" => ("Save your client ID and secret first.", "alert-warn"),
             "nocode" => ("Google did not send an authorisation code back. Try connecting again.", "alert-danger"),
             "failed" => ($"Could not finish connecting: {GoogleOutcomeDetail}", "alert-danger"),
             _ => (null, "alert-ok")
         };
     }
+
+    /// <summary>
+    /// The 403 that stops most first connections. Google's own page says "contact the developer",
+    /// which is unhelpful when the developer is the person reading it.
+    /// </summary>
+    private const string DeniedExplanation =
+        "Google would not connect. If you saw \u201cError 403: access_denied\u201d or "
+      + "\u201caccess restricted to developer-approved testers\u201d, your Google Cloud project is "
+      + "still set to Testing. Open the Google Cloud console, go to APIs & Services \u2192 OAuth "
+      + "consent screen \u2192 Audience, and press PUBLISH APP. That also stops Google cutting the "
+      + "connection every 7 days. (If you simply pressed Cancel, nothing changed \u2014 try again.)";
 
     private void SaveGoogleCredentials()
     {
