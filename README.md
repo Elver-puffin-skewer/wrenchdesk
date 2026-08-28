@@ -321,14 +321,30 @@ which is also why this repo can be public.
 4. **APIs & Services → OAuth consent screen**. Choose **External**, give it the app name
    *WrenchDesk*, and put your own email in the support and developer contact fields.
 
-   > **Leave the *App domain* and *Authorised domains* boxes empty.** They are optional, and only
-   > apply to a business with a public website. Putting the WrenchDesk address in there gives
-   > `Invalid URL: cannot contain a localhost domain` — that field wants a domain like
-   > `example.com`, not an address. Do not invent one to get past it; a domain you do not own will
-   > show on the consent screen. The WrenchDesk address goes in step 5, somewhere else entirely.
+   You only need **App name**, **User support email** and **Developer contact email** here.
+   Leave everything else blank — in particular:
+
+   > **Authorised domains: try to leave it empty.** That box is normally only demanded because of
+   > the three above it — *Application home page*, *Privacy policy link*, *Terms of service link*.
+   > Clear all three and it usually stops asking.
+   >
+   > Putting the WrenchDesk address in there gives `Invalid URL: cannot contain a localhost
+   > domain` — the field wants a bare domain like `waltssmallengines.com`, not an address, and not
+   > `https://` or `www.`
+   >
+   > **If Google insists and the shop has no website**, do not invent a domain — one you do not own
+   > is shown on the sign-in screen as though it were yours. Create the OAuth client as a
+   > **Desktop app** in step 5 instead; that type needs no domain at all.
 5. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
-   Application type **Web application**. Scroll to **Authorised redirect URIs** — *not* the domain
-   box on the previous page — press **Add URI**, and paste exactly:
+   For **Application type** choose **Desktop app**.
+
+   > **Why Desktop app.** It is the type Google intends for a program installed on a PC, which is
+   > what this is. It needs no website, no authorised domain, and no redirect address typed in —
+   > Google lets a program on your own machine receive the sign-in automatically. It also survives
+   > a change of port, which a Web application client would not.
+
+   If you choose **Web application** instead, you must also scroll to **Authorised redirect
+   URIs** — *not* the domain box on the previous page — press **Add URI**, and paste exactly:
 
    ```
    http://localhost:5173/google/callback

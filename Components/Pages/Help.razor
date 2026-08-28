@@ -301,11 +301,44 @@
                         different fields on different pages, and putting the WrenchDesk address in the wrong
                         one gives you:
                         <div class="mono small" style="margin:.4rem 0">Invalid URL: cannot contain a localhost domain</div>
-                        If you see that, you are on the <strong>Branding</strong> / <strong>App domain</strong>
-                        page. <strong>Leave every box in that section empty</strong> — they are optional and
-                        only apply to businesses with a public website. The WrenchDesk address goes under
-                        <strong>Credentials</strong>, in step 5 below.
+                        If you see that, you are on the <strong>Branding</strong> page, in the
+                        <strong>App domain</strong> section. The WrenchDesk address does not go there — it
+                        goes under <strong>Credentials</strong>, in step 5 below.
                     </div>
+
+                    <h4 style="margin-top:1rem">What do I put for Authorised domain?</h4>
+                    <p>
+                        Ideally nothing — leave it empty. That box is normally only demanded because of the
+                        three above it: <em>Application home page</em>, <em>Privacy policy link</em> and
+                        <em>Terms of service link</em>. Clear all three and it usually stops asking.
+                        WrenchDesk runs on this PC, not on a website, so there is no domain to give it.
+                    </p>
+                    <p>
+                        <strong>If Google still insists</strong>, it wants a plain domain you actually own —
+                        <span class="mono">waltssmallengines.com</span>, not
+                        <span class="mono">https://www.waltssmallengines.com</span>. If the shop has a website,
+                        use its domain. If it does not, do not invent one: a domain you do not own is shown on
+                        the sign-in screen as if it were yours, and you could never prove ownership if Google
+                        asked. Use the <strong>Desktop app</strong> route below instead.
+                    </p>
+
+                    <div class="alert alert-ok">
+                        <strong>The way round it: choose &ldquo;Desktop app&rdquo; instead.</strong>
+                        When creating the OAuth client, set <strong>Application type</strong> to
+                        <strong>Desktop app</strong> rather than <em>Web application</em>. That is the type
+                        Google intends for a program installed on a PC, which is exactly what this is. It needs
+                        no website, no domain, and no redirect address typed in at all — Google allows a
+                        program on your own machine to receive the sign-in automatically.
+                        <div class="small" style="margin-top:.35rem">
+                            It also means nothing breaks if you ever change the port WrenchDesk runs on, which
+                            a Web application client would.
+                        </div>
+                    </div>
+
+                    <p class="muted small">
+                        On the Branding page you only need <strong>App name</strong>,
+                        <strong>User support email</strong> and <strong>Developer contact email</strong>.
+                    </p>
 
                     <ol class="help-steps">
                         <li>
@@ -325,10 +358,14 @@
                         </li>
                         <li>
                             <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client
-                            ID</strong>. Application type <strong>Web application</strong>. Under
-                            <strong>Authorised redirect URIs</strong> press <em>Add URI</em> and paste exactly
-                            what <a href="/settings">Settings</a> shows you. That is the only place a
-                            localhost address belongs, and Google accepts it there.
+                            ID</strong>. For <strong>Application type</strong> choose
+                            <strong>Desktop app</strong> — it needs no domain and no redirect address.
+                            <div class="small" style="margin-top:.3rem">
+                                If you pick <em>Web application</em> instead, you must also paste the address
+                                <a href="/settings">Settings</a> shows you into
+                                <strong>Authorised redirect URIs</strong> — the one place a localhost address
+                                is accepted.
+                            </div>
                         </li>
                         <li>
                             Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into
@@ -533,6 +570,16 @@
                             Check the <strong>Tax</strong> checkbox on each line of the ticket. Labor is usually
                             untaxed and parts usually taxed, but it varies — each line is set individually, and the
                             sales tax rate is shown on the ticket itself.
+                        </dd>
+
+                        <dt>Google will not accept the Authorised domain / says it is required</dt>
+                        <dd>
+                            First clear <em>Application home page</em>, <em>Privacy policy link</em> and
+                            <em>Terms of service link</em> — those three are what make Google ask for a domain
+                            at all. If it still insists and the shop has no website, create the OAuth client as
+                            a <strong>Desktop app</strong> instead of a <em>Web application</em>: that type is
+                            meant for programs installed on a PC and needs no domain at all. Never enter a
+                            domain you do not own. See <a href="#google">Google Calendar</a> above.
                         </dd>
 
                         <dt>Google says &ldquo;Error 403: access_denied&rdquo; or &ldquo;only developer-approved testers&rdquo;</dt>
