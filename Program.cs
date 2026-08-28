@@ -48,7 +48,11 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
-app.UseStaticFiles();
+// Only when there is a wwwroot to serve. A published build has none — its assets are compiled in
+// and served by the endpoints below — and calling this anyway logs an alarming
+// "WebRootPath was not found ... static files may be unavailable" warning that means nothing.
+if (Directory.Exists(app.Environment.WebRootPath ?? "")) app.UseStaticFiles();
+
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
@@ -136,45 +140,78 @@ app.MapGet("/google/callback", async (HttpRequest request, GoogleAuthService aut
     }
 });
 
-// ---- Startup banner + browser launch ----
+// ---- Startup ----
 
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+var database = app.Services.GetRequiredService<Db>();
+var shopName = app.Services.GetRequiredService<SettingsStore>().Get(SettingsStore.ShopName);
+
+var localUrl = $"http://localhost:{port}";
+var lanUrls = lanEnabled ? NetworkInfo.LanUrls(port) : new List<string>();
+var openBrowser = builder.Configuration.GetValue("WrenchDesk:OpenBrowser", true);
+
+// Diagnostics only. There is no console in a normal run, so this attaches one on request.
+var wantConsole = args.Any(a => a.TrimStart('-', '/').Equals("console", StringComparison.OrdinalIgnoreCase));
+if (wantConsole) ConsoleWindow.Attach();
+
 lifetime.ApplicationStarted.Register(() =>
 {
-    var db = app.Services.GetRequiredService<Db>();
-    var localUrl = $"http://localhost:{port}";
-
-    Console.WriteLine();
-    Console.WriteLine("  WrenchDesk is running.");
-    Console.WriteLine($"  On this PC:      {localUrl}");
-
-    if (lanEnabled)
+    if (wantConsole)
     {
-        foreach (var url in NetworkInfo.LanUrls(port))
-            Console.WriteLine($"  Phone / tablet:  {url}");
+        Console.WriteLine();
+        Console.WriteLine("  WrenchDesk is running.");
+        Console.WriteLine($"  On this PC:      {localUrl}");
+        foreach (var url in lanUrls) Console.WriteLine($"  Phone / tablet:  {url}");
+        Console.WriteLine($"  Data file:       {database.DatabasePath}");
+        Console.WriteLine();
     }
 
-    Console.WriteLine($"  Data file:       {db.DatabasePath}");
-    Console.WriteLine($"  Backups:         {db.BackupDirectory}");
-    Console.WriteLine();
-    Console.WriteLine("  Leave this window open while the shop is using it. Close it to stop.");
-    Console.WriteLine();
-
-    if (builder.Configuration.GetValue("WrenchDesk:OpenBrowser", true))
+    if (openBrowser)
     {
         try
         {
             Process.Start(new ProcessStartInfo(localUrl) { UseShellExecute = true });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            // Headless or locked-down machines just show the URL above instead.
-            Console.WriteLine($"  (Could not open a browser automatically: {ex.Message})");
+            // A locked-down machine still has the tray icon to open it from.
         }
     }
 });
 
+// The tray icon needs its own STA thread with a message pump; the web host keeps the main one.
+// Without it the program would run completely invisibly, with no way to stop it but Task Manager.
+ShopTray? tray = null;
+Thread? trayThread = null;
+
+if (OperatingSystem.IsWindows() && builder.Configuration.GetValue("WrenchDesk:ShowTrayIcon", true))
+{
+    trayThread = new Thread(() =>
+    {
+        tray = new ShopTray(shopName, localUrl, lanUrls, database.DataDirectory,
+            stopRequested: () => lifetime.StopApplication());
+
+        if (openBrowser) tray.ShowStartedNotice();
+
+        System.Windows.Forms.Application.Run(tray);
+
+        // Closing the tray is how someone quits, so bring the web host down with it.
+        lifetime.StopApplication();
+    })
+    {
+        IsBackground = true,
+        Name = "WrenchDesk tray"
+    };
+
+    trayThread.SetApartmentState(ApartmentState.STA);
+    trayThread.Start();
+}
+
 app.Run();
+
+// Stopping through Ctrl+C or a shutdown should take the icon away too, rather than leaving a
+// dead badge in the notification area until someone hovers over it.
+if (tray is not null) System.Windows.Forms.Application.Exit();
 
 /// <summary>Reads a file compiled into the assembly, cached by the browser like any other asset.</summary>
 static IResult EmbeddedAsset(string name, string contentType)

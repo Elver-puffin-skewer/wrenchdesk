@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Versioning;
+using System.Windows.Forms;
 
 namespace WrenchDesk.Services;
 
@@ -16,11 +17,38 @@ public static class SelfInstall
     public const string AppName = "WrenchDesk";
     public const string ShortcutName = "WrenchDesk - Walt's Small Engines";
 
+    private static readonly string NL = Environment.NewLine;
+
     /// <summary>Switches this class owns, stripped before the host reads the command line.</summary>
     public static readonly HashSet<string> SetupFlags = new(StringComparer.OrdinalIgnoreCase)
     {
-        "install", "uninstall", "portable", "no-install", "noinstall"
+        "install", "uninstall", "portable", "no-install", "noinstall", "console"
     };
+
+    /// <summary>
+    /// Setup output. The program is windowed, so there is usually no console to print to — lines
+    /// are gathered here and shown in one dialog at the end, or written straight out when someone
+    /// ran it with --console.
+    /// </summary>
+    private static readonly System.Text.StringBuilder Transcript = new();
+
+    private static void Say(string text = "")
+    {
+        Transcript.AppendLine(text);
+        if (ConsoleWindow.IsAttached) Console.WriteLine(text);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void ShowTranscript(string title, MessageBoxIcon icon)
+    {
+        var text = Transcript.ToString().Trim();
+        Transcript.Clear();
+
+        if (string.IsNullOrWhiteSpace(text)) return;
+        if (ConsoleWindow.IsAttached) return;
+
+        MessageBox.Show(text, title, MessageBoxButtons.OK, icon);
+    }
 
     /// <summary>Where an installed copy lives. Per-user, so installing never needs admin rights.</summary>
     public static string InstallDirectory =>
@@ -52,18 +80,24 @@ public static class SelfInstall
         var flags = new HashSet<string>(
             args.Select(a => a.TrimStart('-', '/')), StringComparer.OrdinalIgnoreCase);
 
+        // These two run and then stop, so they need somewhere to report to.
         if (flags.Contains("uninstall"))
         {
+            if (flags.Contains("console")) ConsoleWindow.Attach();
             Uninstall();
-            Pause();
+            ShowTranscript("WrenchDesk removed", MessageBoxIcon.Information);
             return true;
         }
 
         if (flags.Contains("install"))
         {
+            if (flags.Contains("console")) ConsoleWindow.Attach();
+
             var installed = Install(out var target);
+            ShowTranscript("WrenchDesk setup",
+                installed ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+
             if (installed) Launch(target);
-            Pause();
             return true;
         }
 
@@ -77,34 +111,30 @@ public static class SelfInstall
         return OfferInstall();
     }
 
+    [SupportedOSPlatform("windows")]
     private static bool OfferInstall()
     {
-        Console.WriteLine();
-        Console.WriteLine("  WrenchDesk is not set up on this PC yet.");
-        Console.WriteLine();
-        Console.WriteLine("  Setting up will:");
-        Console.WriteLine("    - copy the program to your account so it stays put");
-        Console.WriteLine($"      ({InstallDirectory})");
-        Console.WriteLine("    - put a WrenchDesk icon on your desktop");
-        Console.WriteLine("    - add it to the Start menu");
-        Console.WriteLine();
-        Console.WriteLine("  Nothing else on the PC is changed, and no shop data is touched.");
-        Console.WriteLine();
+        var question =
+            "Set WrenchDesk up on this PC?" + NL + NL
+          + "This will:" + NL
+          + "    \u2022  copy the program to your account so it stays put" + NL
+          + "    \u2022  put a WrenchDesk icon on your desktop" + NL
+          + "    \u2022  add it to the Start menu" + NL + NL
+          + "Nothing else on the PC is changed, and no shop data is touched." + NL + NL
+          + "Choose No to run it from where it is without installing.";
 
-        if (!Confirm("  Set up WrenchDesk now? [Y/n] ", defaultYes: true))
+        if (!Confirm(question, "Set up WrenchDesk", defaultYes: true)) return false;
+
+        if (!Install(out var target))
         {
-            Console.WriteLine();
-            Console.WriteLine("  Skipped. Running from where it is.");
-            Console.WriteLine("  (Run it with --portable to skip this question in future.)");
-            Console.WriteLine();
+            ShowTranscript("WrenchDesk setup", MessageBoxIcon.Warning);
             return false;
         }
 
-        if (!Install(out var target)) return false;
-
-        Console.WriteLine();
-        Console.WriteLine("  Starting the installed copy...");
-        Console.WriteLine();
+        Say();
+        Say("WrenchDesk is starting. It runs down by the clock, in the notification area \u2014");
+        Say("click the arrow next to the clock if you cannot see the icon.");
+        ShowTranscript("WrenchDesk is set up", MessageBoxIcon.Information);
 
         // Hand over to the copy in the install folder so this file can be deleted freely.
         Launch(target);
@@ -118,14 +148,14 @@ public static class SelfInstall
 
         if (!OperatingSystem.IsWindows())
         {
-            Console.WriteLine("  Setting up shortcuts is only supported on Windows.");
+            Say("Setting up shortcuts is only supported on Windows.");
             return false;
         }
 
         var source = CurrentExePath;
         if (string.IsNullOrEmpty(source) || !File.Exists(source))
         {
-            Console.WriteLine("  Could not work out where this program is running from, so it cannot set itself up.");
+            Say("Could not work out where this program is running from, so it cannot set itself up.");
             return false;
         }
 
@@ -148,18 +178,20 @@ public static class SelfInstall
                 if (File.Exists(from) && !File.Exists(to)) File.Copy(from, to);
             }
 
-            Console.WriteLine($"  Copied to {InstallDirectory}");
+            Say($"Copied to {InstallDirectory}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"  Could not copy the program: {ex.Message}");
+            Say($"Could not copy the program: {ex.Message}");
             return false;
         }
 
         CreateShortcut(DesktopLink, installedExe, "Desktop icon");
         CreateShortcut(StartMenuLink, installedExe, "Start menu entry");
 
-        if (Confirm("  Start WrenchDesk automatically when Windows starts? [y/N] ", defaultYes: false))
+        if (Confirm("Start WrenchDesk automatically when Windows starts?" + NL + NL
+                  + "Most shops want this on, so it is ready when the PC is.",
+                  "Start with Windows", defaultYes: false))
             CreateShortcut(StartupLink, installedExe, "Start with Windows");
         else if (File.Exists(StartupLink))
             TryDelete(StartupLink);
@@ -170,16 +202,15 @@ public static class SelfInstall
 
     public static void Uninstall()
     {
-        Console.WriteLine();
-        Console.WriteLine("  Removing WrenchDesk from this PC.");
-        Console.WriteLine();
+        Say("Removing WrenchDesk from this PC.");
+        Say();
 
         StopInstalledCopy();
 
         foreach (var link in new[] { DesktopLink, StartMenuLink, StartupLink })
         {
             if (File.Exists(link) && TryDelete(link))
-                Console.WriteLine($"  Removed {Path.GetFileNameWithoutExtension(link)}");
+                Say($"Removed {Path.GetFileNameWithoutExtension(link)}");
         }
 
         // Deleting the folder we are running from would fail, so leave that to Windows.
@@ -188,11 +219,11 @@ public static class SelfInstall
             try
             {
                 Directory.Delete(InstallDirectory, recursive: true);
-                Console.WriteLine($"  Removed {InstallDirectory}");
+                Say($"Removed {InstallDirectory}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"  Could not remove {InstallDirectory}: {ex.Message}");
+                Say($"Could not remove {InstallDirectory}: {ex.Message}");
             }
         }
         else if (RunningFromInstallDirectory)
@@ -200,15 +231,14 @@ public static class SelfInstall
             // A program cannot delete the file it is running from, so hand the last step to a
             // detached shell that waits for this process to exit and then clears the folder.
             if (ScheduleFolderRemoval(InstallDirectory))
-                Console.WriteLine($"  Removed {InstallDirectory}");
+                Say($"Removed {InstallDirectory}");
             else
-                Console.WriteLine($"  Shortcuts removed. Delete this folder to finish: {InstallDirectory}");
+                Say($"Shortcuts removed. Delete this folder to finish: {InstallDirectory}");
         }
 
-        Console.WriteLine();
-        Console.WriteLine("  Your shop data was left alone:");
-        Console.WriteLine($"    {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), AppName)}");
-        Console.WriteLine();
+        Say();
+        Say("Your shop data was left alone:");
+        Say(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), AppName));
     }
 
     // ---- Shortcut plumbing ----
@@ -237,7 +267,7 @@ public static class SelfInstall
             var shellType = Type.GetTypeFromProgID("WScript.Shell");
             if (shellType is null)
             {
-                Console.WriteLine($"  Could not create the {label} (Windows Script Host is unavailable).");
+                Say($"Could not create the {label} (Windows Script Host is unavailable).");
                 return;
             }
 
@@ -259,11 +289,11 @@ public static class SelfInstall
 
             t.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
 
-            Console.WriteLine($"  {label} created.");
+            Say($"{label} created.");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"  Could not create the {label}: {ex.Message}");
+            Say($"Could not create the {label}: {ex.Message}");
         }
     }
 
@@ -273,9 +303,9 @@ public static class SelfInstall
     /// </summary>
     private static void ReportPinning()
     {
-        Console.WriteLine();
-        Console.WriteLine("  To put WrenchDesk on the taskbar, Windows needs you to do it:");
-        Console.WriteLine("    right-click the desktop icon  ->  Show more options  ->  Pin to taskbar");
+        Say();
+        Say("To put WrenchDesk on the taskbar, Windows needs you to do it yourself:");
+        Say("right-click the desktop icon, choose Show more options, then Pin to taskbar.");
     }
 
     // ---- Helpers ----
@@ -334,8 +364,8 @@ public static class SelfInstall
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"  Could not start the installed copy: {ex.Message}");
-            Console.WriteLine($"  Start it from the desktop icon instead.");
+            Say($"Could not start the installed copy: {ex.Message}");
+            Say("Start it from the desktop icon instead.");
         }
     }
 
@@ -352,43 +382,35 @@ public static class SelfInstall
         }
     }
 
-    /// <summary>Asks a yes/no question, falling back to the default when there is no console to read.</summary>
-    private static bool Confirm(string prompt, bool defaultYes)
+    /// <summary>
+    /// Asks a yes/no question. A dialog normally, since the program is windowed; the console when
+    /// someone ran it with --console. Anything that cannot ask takes the default rather than hang.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static bool Confirm(string question, string title, bool defaultYes)
     {
-        Console.Write(prompt);
-
-        try
+        if (ConsoleWindow.IsAttached)
         {
-            if (Console.IsInputRedirected)
+            Console.Write($"{question} [{(defaultYes ? "Y/n" : "y/N")}] ");
+
+            try
             {
-                Console.WriteLine(defaultYes ? "yes" : "no");
+                if (Console.IsInputRedirected) return defaultYes;
+
+                var answer = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(answer)) return defaultYes;
+
+                return answer.Trim().StartsWith("y", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (IOException)
+            {
                 return defaultYes;
             }
-
-            var answer = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(answer)) return defaultYes;
-
-            return answer.Trim().StartsWith("y", StringComparison.OrdinalIgnoreCase);
         }
-        catch (IOException)
-        {
-            Console.WriteLine();
-            return defaultYes;
-        }
-    }
 
-    private static void Pause()
-    {
-        if (Console.IsInputRedirected) return;
+        var result = MessageBox.Show(question, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+            defaultYes ? MessageBoxDefaultButton.Button1 : MessageBoxDefaultButton.Button2);
 
-        Console.WriteLine("  Press Enter to close.");
-        try
-        {
-            Console.ReadLine();
-        }
-        catch (IOException)
-        {
-            // No console to wait on.
-        }
+        return result == DialogResult.Yes;
     }
 }

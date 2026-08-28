@@ -61,6 +61,36 @@
             </div>
         }
 
+        @if (Matches(Get("running")))
+        {
+            <section id="running" class="card">
+                <div class="card-head"><h2>🖥 Where it runs</h2></div>
+                <div class="card-body">
+                    <p>
+                        WrenchDesk sits quietly <strong>down by the clock</strong>, in the notification area with
+                        the volume and wifi icons. There is no window to keep open and nothing cluttering the
+                        taskbar.
+                    </p>
+                    <p><strong>Right-click that icon</strong> for:</p>
+                    <ul>
+                        <li><strong>Open WrenchDesk</strong> — opens the shop screen (double-clicking the icon does the same)</li>
+                        <li><strong>Phone / tablet address</strong> — copies the address to type into a phone</li>
+                        <li><strong>Open the records folder</strong> — where the database and backups live</li>
+                        <li><strong>Stop WrenchDesk</strong> — properly shuts it down</li>
+                    </ul>
+                    <div class="alert alert-info">
+                        <strong>Closing the browser does not stop it.</strong> That only puts the page away. The
+                        program keeps running so scheduled backups and calendar syncing still happen. Only
+                        <em>Stop WrenchDesk</em> actually shuts it down.
+                    </div>
+                    <p style="margin-bottom:0" class="muted small">
+                        Can't see the icon? Windows hides ones it thinks you don't use — click the small
+                        <strong>^</strong> arrow next to the clock, then drag WrenchDesk out to keep it on show.
+                    </p>
+                </div>
+            </section>
+        }
+
         @if (Matches(Get("first-time")))
         {
             <section id="first-time" class="card">
@@ -261,11 +291,52 @@
                         appointments and birthdays. Settings has a button that makes a clean one in a single click.
                     </p>
                     <p>
-                        Connecting it needs a free Google account setup that takes about ten minutes — Google
-                        requires every business to use its own credentials. The step-by-step is in
-                        <a href="https://github.com/Elver-puffin-skewer/wrenchdesk#google-calendar-sync" target="_blank">the
-                        setup guide</a>, and <a href="/settings">Settings</a> shows the exact values to paste.
+                        Connecting it takes about ten minutes and costs nothing. Google requires every business
+                        to use its own credentials, so there is no way around this bit.
                     </p>
+
+                    <div class="alert alert-danger">
+                        <strong>The one thing that trips everyone up.</strong> Google asks for a
+                        <em>domain</em> in one place and a <em>redirect address</em> in another. They are
+                        different fields on different pages, and putting the WrenchDesk address in the wrong
+                        one gives you:
+                        <div class="mono small" style="margin:.4rem 0">Invalid URL: cannot contain a localhost domain</div>
+                        If you see that, you are on the <strong>Branding</strong> / <strong>App domain</strong>
+                        page. <strong>Leave every box in that section empty</strong> — they are optional and
+                        only apply to businesses with a public website. The WrenchDesk address goes under
+                        <strong>Credentials</strong>, in step 5 below.
+                    </div>
+
+                    <ol class="help-steps">
+                        <li>
+                            Go to <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>
+                            and sign in with the account that owns the shop calendar.
+                        </li>
+                        <li>Create a project. Call it <strong>WrenchDesk</strong>.</li>
+                        <li>
+                            <strong>APIs &amp; Services → Library</strong>, search for
+                            <strong>Google Calendar API</strong>, press <strong>Enable</strong>.
+                        </li>
+                        <li>
+                            <strong>APIs &amp; Services → OAuth consent screen</strong>. Choose
+                            <strong>External</strong>. Put the app name and your own email in the contact
+                            boxes. <strong>Leave App domain and Authorised domains blank</strong> — see the
+                            warning above.
+                        </li>
+                        <li>
+                            <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client
+                            ID</strong>. Application type <strong>Web application</strong>. Under
+                            <strong>Authorised redirect URIs</strong> press <em>Add URI</em> and paste exactly
+                            what <a href="/settings">Settings</a> shows you. That is the only place a
+                            localhost address belongs, and Google accepts it there.
+                        </li>
+                        <li>
+                            Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into
+                            <a href="/settings">Settings</a>, press <strong>Save credentials</strong>, then
+                            <strong>Connect Google account</strong>.
+                        </li>
+                        <li>Pick or create the calendar, then switch syncing on.</li>
+                    </ol>
                     <p>
                         <strong>All-day entries count.</strong> Plenty of shop work goes on the calendar as a
                         name against a date with no set time — those come across as stops and show as
@@ -279,9 +350,12 @@
                         <a href="/settings">Settings</a> to read the last 90 days from scratch.
                     </p>
                     <div class="alert alert-warn" style="margin-bottom:0">
-                        <strong>One thing that catches people out:</strong> in the Google Cloud console, set the
-                        OAuth consent screen to <em>In production</em>. If it's left on <em>Testing</em>, Google
-                        cuts the connection every 7 days and syncing quietly stops.
+                        <strong>Then one last thing.</strong> On the OAuth consent screen page, press
+                        <strong>Publish app</strong> to move it from <em>Testing</em> to <em>In production</em>.
+                        Left on Testing, Google cuts the connection every 7 days and syncing quietly stops.
+                        The "unverified app" warning you get when connecting is expected — press
+                        <strong>Advanced</strong>, then <strong>Go to WrenchDesk (unsafe)</strong>. It is your
+                        own project, used only by your own account.
                     </div>
                 </div>
             </section>
@@ -328,7 +402,7 @@
                         worst happens:
                     </p>
                     <ol class="help-steps">
-                        <li>Close WrenchDesk (close the black window).</li>
+                        <li>Stop WrenchDesk — right-click its icon by the clock and choose <strong>Stop WrenchDesk</strong>.</li>
                         <li>Find your most recent backup file — they're named like <span class="mono">wrenchdesk-2026-08-25-180000.db</span>.</li>
                         <li>Rename it to exactly <span class="mono">wrenchdesk.db</span>.</li>
                         <li>Put it in <span class="mono">@Database.DataDirectory</span>, replacing the file already there.</li>
@@ -415,14 +489,23 @@
                     <dl class="help-faq">
                         <dt>The page won't load / the browser says it can't connect</dt>
                         <dd>
-                            WrenchDesk has stopped. Double-click the desktop icon to start it again. It has to be
-                            running for the page to work — the black window is the program itself.
+                            WrenchDesk has stopped. Double-click the desktop icon to start it again, or find its
+                            icon down by the clock and double-click that. It has to be running for the page to work.
                         </dd>
 
-                        <dt>I closed the black window and everything disappeared</dt>
+                        <dt>I closed the browser — did I turn it off?</dt>
                         <dd>
-                            That window <em>is</em> WrenchDesk. Closing it stops the program. Nothing is lost —
-                            start it from the desktop icon and everything is exactly as you left it.
+                            No. Closing the browser just puts the page away; WrenchDesk keeps running down by the
+                            clock, so backups and calendar syncing carry on. Double-click its icon there to open
+                            the page again. To really stop it, right-click that icon and choose
+                            <strong>Stop WrenchDesk</strong>.
+                        </dd>
+
+                        <dt>I can't see the icon by the clock</dt>
+                        <dd>
+                            Windows hides icons it thinks you don't use. Click the small <strong>^</strong> arrow
+                            to the left of the clock — it will be in there. Drag it out next to the clock to keep
+                            it visible.
                         </dd>
 
                         <dt>Windows says the publisher is unknown</dt>
@@ -460,7 +543,9 @@
 
                         <dt>Something else is broken</dt>
                         <dd>
-                            Note what you were doing and check the black window for a message. Problems can be
+                            Note what you were doing, then start it again with
+                            <span class="mono">WrenchDesk.exe --console</span>, which shows a window with any
+                            error messages in it. Problems can be
                             reported at
                             <a href="https://github.com/Elver-puffin-skewer/wrenchdesk/issues" target="_blank">the project page</a>.
                         </dd>
@@ -563,6 +648,8 @@
     /// </summary>
     private static readonly List<Topic> Topics = new()
     {
+        new("running", "🖥", "Where it runs",
+            "tray icon clock notification area window black box close closed stop quit exit running background hidden minimise minimize taskbar"),
         new("first-time", "🚀", "Setting up for the first time",
             "setup start begin new install first shop details labor rate tax"),
         new("daily", "🔧", "A job, start to finish",

@@ -339,8 +339,16 @@
             </div>
             <div class="field span-2">
                 <div class="muted small">
-                    In Google Cloud, the authorised redirect URI must be exactly:
-                    <span class="mono">@_redirectUri</span>
+                    Paste this into Google Cloud under
+                    <strong>Credentials → your OAuth client → Authorised redirect URIs</strong>:
+                </div>
+                <div class="mono" style="margin:.35rem 0;padding:.5rem .7rem;background:var(--cream);border-radius:6px">
+                    @_redirectUri
+                </div>
+                <div class="muted small">
+                    It does <em>not</em> go in <strong>App domain</strong> or <strong>Authorised
+                    domains</strong> on the consent screen — Google rejects localhost there. Leave those
+                    boxes empty. <a href="/help#google">More in Help</a>.
                 </div>
             </div>
         </div>

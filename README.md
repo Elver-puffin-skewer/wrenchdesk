@@ -94,6 +94,7 @@ Removes the shortcuts and the program. Your shop data is left alone.
 | `WrenchDesk.exe --portable` | Runs where it sits and never installs — for a USB stick. |
 | `WrenchDesk.exe --install` | Sets up without being asked. |
 | `WrenchDesk.exe --uninstall` | Removes shortcuts and the program. |
+| `WrenchDesk.exe --console` | Attaches a console showing the startup details, for troubleshooting. |
 
 ### Pinning it to the taskbar
 
@@ -108,19 +109,27 @@ the desktop icon onto the taskbar works too.
 
 ### What you see when it runs
 
-A console window opens and prints something like:
+Nothing, which is the point. WrenchDesk opens your browser and then sits **down by the clock**, in
+the notification area alongside the volume and wifi icons. There is no console window to keep open
+and nothing cluttering the taskbar.
 
-```
-  WrenchDesk is running.
-  On this PC:      http://localhost:5173
-  Phone / tablet:  http://192.168.1.20:5173
-  Data file:       C:\Users\Shop\Documents\WrenchDesk\wrenchdesk.db
-  Backups:         C:\Users\Shop\Documents\WrenchDesk\Backups
+Right-click the tray icon for:
 
-  Leave this window open while the shop is using it. Close it to stop.
-```
+| | |
+| --- | --- |
+| **Open WrenchDesk** | Opens the shop screen (double-clicking the icon does the same) |
+| **Phone / tablet address** | Copies the LAN address to paste into a phone |
+| **Open the records folder** | Where the database and backups live |
+| **Stop WrenchDesk** | Properly shuts it down |
 
-Your browser opens automatically. **Leave the console window open** — closing it stops the program.
+**Closing the browser does not stop it** — that only puts the page away. The program keeps running
+so scheduled backups and calendar syncing still happen. Only *Stop WrenchDesk* shuts it down.
+
+If the icon is not visible, Windows has tucked it away: click the small **^** arrow next to the
+clock and drag WrenchDesk out.
+
+To see what it is doing — the addresses it is serving on, and any errors — run
+`WrenchDesk.exe --console`, which attaches a console window for that session.
 
 ### Using it from a phone or tablet
 
@@ -170,6 +179,7 @@ want one. To change a setting, create `appsettings.json` next to `WrenchDesk.exe
 | `Port` | Which port to serve on. Change it if something else on the PC already uses 5173. |
 | `AllowLanAccess` | `false` locks it to the shop PC only — no phone or tablet access. |
 | `OpenBrowser` | `false` stops it opening a browser window on startup. |
+| `ShowTrayIcon` | `false` runs with no tray icon at all. Only sensible for an unattended PC. |
 | `DataDirectory` | Where the database and backups live. Blank means `Documents\WrenchDesk`. |
 
 ---
@@ -310,8 +320,15 @@ which is also why this repo can be public.
 3. **APIs & Services → Library**, search for **Google Calendar API**, press **Enable**.
 4. **APIs & Services → OAuth consent screen**. Choose **External**, give it the app name
    *WrenchDesk*, and put your own email in the support and developer contact fields.
+
+   > **Leave the *App domain* and *Authorised domains* boxes empty.** They are optional, and only
+   > apply to a business with a public website. Putting the WrenchDesk address in there gives
+   > `Invalid URL: cannot contain a localhost domain` — that field wants a domain like
+   > `example.com`, not an address. Do not invent one to get past it; a domain you do not own will
+   > show on the consent screen. The WrenchDesk address goes in step 5, somewhere else entirely.
 5. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
-   Application type **Web application**. Under **Authorised redirect URIs** add exactly:
+   Application type **Web application**. Scroll to **Authorised redirect URIs** — *not* the domain
+   box on the previous page — press **Add URI**, and paste exactly:
 
    ```
    http://localhost:5173/google/callback
