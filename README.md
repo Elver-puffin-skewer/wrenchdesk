@@ -36,6 +36,11 @@ Calendar sync**: write a stop up here and it appears on the shop calendar; move 
 phone and it changes here. Every stop also has a **Directions** link that opens Google Maps for
 whoever is driving. See [Google Calendar sync](#google-calendar-sync).
 
+**Common items** — the parts and jobs a shop repeats all day sit as one-click buttons on every
+ticket: air filter, spark plug, deck belt, oil change, sharpen blades. Each comes in priced at
+whatever you last charged for it, so the price list keeps itself. The list is yours to reorder,
+rename and add to.
+
 **Help** — a full guide lives inside the app under **Help**, written for the counter rather than for
 a developer. It works offline and shows this shop's actual settings — where the records are, whether
 backups are on, the exact URL to type into a phone — instead of generic instructions.

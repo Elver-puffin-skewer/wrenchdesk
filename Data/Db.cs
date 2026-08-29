@@ -243,6 +243,48 @@ public class Db
         -- An entry written in Google says what it says. Keeping the original wording means the
         -- schedule can show "Bill Moore - 555-1234" instead of inventing "Other - (no customer)".
         ALTER TABLE appointments ADD COLUMN title TEXT NOT NULL DEFAULT '';
+        """,
+
+        // 3 -> 4: one-click lines for the work a shop does over and over
+        """
+        CREATE TABLE quick_items (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+            kind          TEXT NOT NULL DEFAULT 'Part',
+            default_cents INTEGER NOT NULL DEFAULT 0,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            is_active     INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX ix_quick_order ON quick_items(is_active, sort_order);
+
+        -- Seeded from the jobs and parts this shop named, in the order they said they reach for
+        -- them. Every one is editable, and the list is theirs to change.
+        INSERT INTO quick_items (name, kind, sort_order) VALUES
+            ('Air Filter', 'Part', 10),
+            ('Spark Plug', 'Part', 20),
+            ('Oil Filter', 'Part', 30),
+            ('Oil - Quart', 'Part', 40),
+            ('Oil Change', 'Labor', 50),
+            ('Fuel Filter', 'Part', 60),
+            ('Sharpen Blades', 'Labor', 70),
+            ('New Blades', 'Part', 80),
+            ('New Carburetor', 'Part', 90),
+            ('Clean Carburetor', 'Labor', 100),
+            ('Spindle Assembly', 'Part', 110),
+            ('Tube', 'Part', 120),
+            ('Pulley', 'Part', 130),
+            ('Deck Belt', 'Part', 140),
+            ('Drive Belt', 'Part', 150),
+            ('PTO Belt', 'Part', 160),
+            ('Fuel Line', 'Part', 170),
+            ('Gasket', 'Part', 180),
+            ('Fuel Pump', 'Part', 190),
+            ('Solenoid', 'Part', 200),
+            ('Ignition Switch', 'Part', 210),
+            ('PTO Switch', 'Part', 220),
+            ('Ignition Coil', 'Part', 230),
+            ('Relay', 'Part', 240),
+            ('Safety Switch', 'Part', 250);
         """
     };
 }

@@ -677,3 +677,50 @@ select { cursor: pointer; }
     .help-layout { display: block; }
     .help-body section { break-inside: avoid; }
 }
+
+
+/* ---------- Quick add ---------- */
+/* The parts and jobs a shop repeats all day, one click each. */
+
+.quick-add {
+    padding: .75rem 1.1rem;
+    background: var(--cream-2);
+    border-bottom: 1px solid var(--line-2);
+}
+.quick-add-label {
+    display: flex;
+    align-items: baseline;
+    gap: .6rem;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-bottom: .5rem;
+}
+.quick-add-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+.quick-chip {
+    padding: .32rem .65rem;
+    border: 1px solid #dcd3b4;
+    background: #fff;
+    color: var(--navy);
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: .84rem;
+    font-weight: 550;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .1s ease, border-color .1s ease;
+}
+.quick-chip:hover { background: var(--navy); border-color: var(--navy); color: #fff; }
+.quick-chip:active { transform: translateY(1px); }
+
+/* Jobs read differently from parts, so labour is tinted to match its badge elsewhere. */
+.quick-chip.labor { border-color: #f0c9c9; color: var(--brand-dark); }
+.quick-chip.labor:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+/* Fingers, not a mouse. */
+@media (max-width: 820px) {
+    .quick-chip { padding: .5rem .8rem; font-size: .9rem; }
+}

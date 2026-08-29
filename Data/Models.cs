@@ -279,6 +279,23 @@ public class Appointment
             System.Globalization.DateTimeStyles.None, out var dt) ? dt : null;
 }
 
+/// <summary>
+/// A part or job the shop reaches for again and again, offered as a one-click line on a ticket.
+/// The list is the shop's own — seeded from what they told us, and theirs to change.
+/// </summary>
+public class QuickItem
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "Part";
+
+    /// <summary>Price to start the line at. Zero means "look up what it went out at last time".</summary>
+    public long DefaultCents { get; set; }
+
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
 /// <summary>Row shapes for list screens — joined so pages avoid N+1 lookups.</summary>
 public class TicketRow
 {

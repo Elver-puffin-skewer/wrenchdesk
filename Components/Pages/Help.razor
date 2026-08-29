@@ -152,10 +152,16 @@
                             <div>
                                 <strong>You quote it</strong>
                                 <p>
-                                    On the ticket, add <strong>+ Labor</strong> and <strong>+ Part</strong> lines.
-                                    Labor starts at your shop rate, so usually you just type the hours. Then press
-                                    <strong>Print</strong> — while the ticket is still an <em>Estimate</em>, it prints
-                                    as an estimate with a signature line for them to approve.
+                                    The <strong>common items</strong> strip on the ticket has the parts and jobs
+                                    you do all the time — click <em>Air Filter</em> and the line appears, priced
+                                    at whatever you last charged for one. For anything else use
+                                    <strong>+ Labor</strong> or <strong>+ Part</strong> and type it; labor starts
+                                    at your shop rate, so usually you just enter the hours.
+                                </p>
+                                <p>
+                                    Then press <strong>Print</strong> — while the ticket is still an
+                                    <em>Estimate</em>, it prints as an estimate with a signature line for them
+                                    to approve.
                                 </p>
                             </div>
                         </div>
@@ -203,6 +209,44 @@
                         stay the same record, so a year later the customer's history reads as one story instead of
                         two disconnected pieces of paper.
                     </div>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("common-items")))
+        {
+            <section id="common-items" class="card">
+                <div class="card-head"><h2>🛒 Common items</h2></div>
+                <div class="card-body">
+                    <p>
+                        Every ticket has a strip of buttons for the parts and jobs you fit and do over and
+                        over — air filters, plugs, belts, oil changes, sharpening. One click puts the line on
+                        the ticket. No typing, no spelling it the same way twice.
+                    </p>
+                    <p>
+                        <strong>The price fills itself in.</strong> Click an item and it comes in at whatever
+                        you last charged for that exact thing, taken from your own past tickets. Fit an air
+                        filter at $12.99 today and the next one starts at $12.99. Change the price on a ticket
+                        and the new one is what you get next time — so it follows what your supplier is
+                        actually charging, with no price list to keep up.
+                    </p>
+                    <p>
+                        A brand new item starts at $0.00 and you fill it in. That is normal for things like
+                        <em>Pulley</em>, where there are fifty different ones and the button is just there to
+                        save typing the word.
+                    </p>
+
+                    <h3>Making the list your own</h3>
+                    <p>
+                        <a href="/settings#quick">Settings → Common items</a> lets you add your own, rename
+                        anything, put the ones you reach for most at the top with the arrows, and untick
+                        anything you never use so it stops taking up room. Nothing is fixed.
+                    </p>
+                    <p style="margin-bottom:0">
+                        Set a price there only if it genuinely never changes — a fixed-price oil change, say.
+                        Leave it at 0 and WrenchDesk keeps using your last actual price, which is right more
+                        often.
+                    </p>
                 </div>
             </section>
         }
@@ -606,11 +650,22 @@
             <section id="updating" class="card">
                 <div class="card-head"><h2>⬆ Updating and removing</h2></div>
                 <div class="card-body">
+                    <div class="alert alert-ok">
+                        <strong>There is nothing to move, import, or point at.</strong> Your customers,
+                        tickets, payments and settings are not inside the program — they live in
+                        <span class="mono">@Database.DatabasePath</span>, which an update never touches.
+                        Download the new version, run it, and everything is exactly where you left it.
+                    </div>
                     <p>
                         <strong>To update:</strong> download the newest <span class="mono">WrenchDesk.exe</span> from
                         <a href="https://github.com/Elver-puffin-skewer/wrenchdesk/releases" target="_blank">the releases page</a>
-                        and run it. It replaces the installed copy. <strong>Your records are never touched by an
-                        update</strong> — they live in a separate folder.
+                        and run it. It replaces the installed program, and that is all it replaces.
+                    </p>
+                    <p>
+                        <strong>Moving to a different PC</strong> is the only time you copy anything: install
+                        WrenchDesk there, then copy your <span class="mono">wrenchdesk.db</span> into its
+                        records folder, replacing the empty one. See
+                        <a href="#backups">Getting your records back</a>.
                     </p>
                     <p style="margin-bottom:0">
                         <strong>To remove it:</strong> run <span class="mono">WrenchDesk.exe --uninstall</span>. That
@@ -701,6 +756,8 @@
             "setup start begin new install first shop details labor rate tax"),
         new("daily", "🔧", "A job, start to finish",
             "ticket estimate quote repair job workflow approve invoice payment customer machine bench parts labor"),
+        new("common-items", "🛒", "Common items",
+            "common items quick add parts list buttons repeat repeated typing shortcut price prices remember air filter spark plug belt oil change sharpen blades pulley"),
         new("customers", "👤", "Customers and their machines",
             "customer search find phone number equipment machine serial engine history archive delete"),
         new("money", "💵", "Money",
@@ -718,7 +775,8 @@
           + "403 access_denied denied testers verification unverified publish blocked forbidden "
           + "domain authorised authorized branding consent api key service account json"),
         new("updating", "⬆", "Updating and removing",
-            "update upgrade new version uninstall remove delete newest download")
+            "update upgrade new version uninstall remove delete newest download "
+          + "transfer data import export move migrate keep records new pc")
     };
 
     private string _query = "";

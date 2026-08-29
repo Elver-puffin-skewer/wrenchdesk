@@ -4,6 +4,7 @@
 @inject MoneyRepo Payments
 @inject ScheduleRepo Schedule
 @inject SettingsStore Settings
+@inject QuickItemRepo QuickItems
 @inject NavigationManager Nav
 
 <PageTitle>@(_ticket?.Number ?? "Ticket") — WrenchDesk</PageTitle>
@@ -120,6 +121,28 @@ else
                 <button class="btn btn-sm" @onclick="@(() => AddLine("Discount"))">+ Discount</button>
             </div>
         </div>
+
+        @if (_quickItems.Count > 0)
+        {
+            @* The shop's own list of what it fits and does most. One click beats retyping
+               "Air Filter" for the fiftieth time this season. *@
+            <div class="quick-add no-print">
+                <div class="quick-add-label">
+                    Add common item
+                    <a class="muted small" href="/settings#quick" style="font-weight:400">edit list</a>
+                </div>
+                <div class="quick-add-chips">
+                    @foreach (var item in _quickItems)
+                    {
+                        var quick = item;
+                        <button class="quick-chip @(quick.Kind == "Labor" ? "labor" : "")"
+                                title="@quick.Kind" @onclick="() => AddQuickItem(quick)">
+                            @quick.Name
+                        </button>
+                    }
+                </div>
+            </div>
+        }
 
         @if (_lines.Count == 0)
         {
@@ -425,6 +448,7 @@ else
     private Equipment? _equipment;
     private List<Equipment> _customerEquipment = new();
     private List<TicketLine> _lines = new();
+    private List<QuickItem> _quickItems = new();
     private List<PaymentRow> _payments = new();
     private List<AppointmentRow> _appointments = new();
     private TicketTotals _totals = new();
@@ -459,6 +483,7 @@ else
         _equipment = _ticket.EquipmentId is null ? null : _customerEquipment.FirstOrDefault(e => e.Id == _ticket.EquipmentId);
 
         _lines = Tickets.Lines(Id);
+        _quickItems = QuickItems.Active();
         _payments = Payments.ForTicket(Id);
         _appointments = Schedule.ForTicket(Id);
         _totals = TicketTotals.From(_lines, _ticket.TaxRateBp, _payments.Sum(p => p.AmountCents));
@@ -511,6 +536,28 @@ else
     }
 
     // ---- Lines ----
+
+    /// <summary>
+    /// Adds a line for something the shop does all the time. The price comes from the item if one
+    /// is set, otherwise from what they last charged for it — so a part that has been fitted
+    /// before returns at its real price with no price list to maintain.
+    /// </summary>
+    private void AddQuickItem(QuickItem item)
+    {
+        var line = new TicketLine
+        {
+            TicketId = Id,
+            Kind = item.Kind,
+            Description = item.Name,
+            QtyMilli = 1000,
+            UnitCents = QuickItems.StartingPriceFor(item),
+            Taxable = item.Kind != "Labor"
+        };
+
+        Tickets.AddLine(line);
+        _flash = $"Added {item.Name}.";
+        Load();
+    }
 
     private void AddLine(string kind)
     {

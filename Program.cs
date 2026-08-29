@@ -32,6 +32,7 @@ builder.Services.AddScoped<CustomerRepo>();
 builder.Services.AddScoped<TicketRepo>();
 builder.Services.AddScoped<MoneyRepo>();
 builder.Services.AddScoped<ScheduleRepo>();
+builder.Services.AddScoped<QuickItemRepo>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<GoogleAuthService>();
 builder.Services.AddScoped<CalendarSyncService>();

@@ -5,6 +5,7 @@
 @inject GoogleAuthService Auth
 @inject CalendarSyncService Sync
 @inject ScheduleRepo Schedule
+@inject QuickItemRepo QuickItems
 @inject NavigationManager Nav
 
 <PageTitle>Settings — WrenchDesk</PageTitle>
@@ -90,6 +91,99 @@
 
 <div class="btn-row" style="margin-bottom:1.5rem">
     <button class="btn btn-primary btn-lg" @onclick="Save">Save settings</button>
+</div>
+
+<div class="card" id="quick">
+    <div class="card-head">
+        <h2>Common items</h2>
+        <div class="spacer"></div>
+        <span class="muted small">@_quickAll.Count(q => q.IsActive) shown on tickets</span>
+    </div>
+    <div class="card-body" style="padding-bottom:.5rem">
+        <p class="muted small" style="margin-bottom:1rem">
+            The parts and jobs you do over and over. They appear as buttons on every ticket, so a
+            line is one click instead of typing. Leave the price at 0 and WrenchDesk uses whatever
+            you last charged for that item — set one only if it never changes.
+        </p>
+
+        <div class="form-grid" style="align-items:end">
+            <div class="field">
+                <label>Add an item</label>
+                <input type="text" placeholder="Deck Belt, Valve Adjustment…" @bind="_newQuickName" />
+            </div>
+            <div class="field">
+                <div class="form-grid" style="gap:0 .6rem">
+                    <div>
+                        <label class="lbl">Type</label>
+                        <select @bind="_newQuickKind">
+                            @foreach (var k in TicketLine.Kinds)
+                            {
+                                <option value="@k">@k</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="lbl">&nbsp;</label>
+                        <button class="btn btn-primary btn-block" @onclick="AddQuickItem">Add</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (_quickError is not null)
+        {
+            <div class="alert alert-danger">@_quickError</div>
+        }
+    </div>
+
+    <div class="table-wrap">
+        <table class="data">
+            <thead>
+                <tr>
+                    <th class="shrink">Order</th>
+                    <th>Name</th>
+                    <th class="shrink">Type</th>
+                    <th class="num" style="width:7rem">Price</th>
+                    <th class="shrink">On tickets</th>
+                    <th class="shrink"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _quickAll)
+                {
+                    var q = item;
+                    <tr>
+                        <td class="shrink">
+                            <button class="btn btn-ghost btn-sm" title="Move up" @onclick="() => MoveQuick(q.Id, true)">↑</button>
+                            <button class="btn btn-ghost btn-sm" title="Move down" @onclick="() => MoveQuick(q.Id, false)">↓</button>
+                        </td>
+                        <td>
+                            <input type="text" value="@q.Name" @onchange="e => RenameQuick(q, e)" />
+                        </td>
+                        <td class="shrink">
+                            <select value="@q.Kind" @onchange="e => RekindQuick(q, e)">
+                                @foreach (var k in TicketLine.Kinds)
+                                {
+                                    <option value="@k">@k</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="tnum" style="text-align:right"
+                                   value="@((q.DefaultCents / 100m).ToString("0.00"))"
+                                   @onchange="e => RepriceQuick(q, e)" />
+                        </td>
+                        <td class="shrink" style="text-align:center">
+                            <input type="checkbox" checked="@q.IsActive" @onchange="e => ToggleQuick(q, e)" />
+                        </td>
+                        <td class="shrink">
+                            <button class="btn btn-ghost btn-sm" title="Remove" @onclick="() => DeleteQuick(q.Id)">✕</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <div class="card">
@@ -677,6 +771,7 @@
         _backups = Backups.ListBackups(_listedFolder);
 
         LoadGoogle();
+        LoadQuickItems();
     }
 
     /// <summary>Turns a stored absolute path back into the drive + folder the dropdowns work in.</summary>
@@ -893,6 +988,74 @@
       + "still set to Testing. Open the Google Cloud console, go to APIs & Services \u2192 OAuth "
       + "consent screen \u2192 Audience, and press PUBLISH APP. That also stops Google cutting the "
       + "connection every 7 days. (If you simply pressed Cancel, nothing changed \u2014 try again.)";
+
+    // ---- Common items ----
+
+    private List<QuickItem> _quickAll = new();
+    private string _newQuickName = "";
+    private string _newQuickKind = "Part";
+    private string? _quickError;
+
+    private void LoadQuickItems() => _quickAll = QuickItems.All();
+
+    private void AddQuickItem()
+    {
+        _quickError = null;
+
+        if (string.IsNullOrWhiteSpace(_newQuickName))
+        {
+            _quickError = "Type a name first.";
+            return;
+        }
+
+        QuickItems.Insert(new QuickItem { Name = _newQuickName.Trim(), Kind = _newQuickKind });
+        _newQuickName = "";
+        LoadQuickItems();
+    }
+
+    private void RenameQuick(QuickItem item, ChangeEventArgs e)
+    {
+        var name = e.Value?.ToString()?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        item.Name = name;
+        QuickItems.Update(item);
+        LoadQuickItems();
+    }
+
+    private void RekindQuick(QuickItem item, ChangeEventArgs e)
+    {
+        item.Kind = e.Value?.ToString() ?? "Part";
+        QuickItems.Update(item);
+        LoadQuickItems();
+    }
+
+    private void RepriceQuick(QuickItem item, ChangeEventArgs e)
+    {
+        // Blank or zero means "use whatever it went out at last time".
+        item.DefaultCents = Money.TryParse(e.Value?.ToString(), out var cents) ? cents : 0;
+        QuickItems.Update(item);
+        LoadQuickItems();
+    }
+
+    private void ToggleQuick(QuickItem item, ChangeEventArgs e)
+    {
+        item.IsActive = e.Value is bool b && b;
+        QuickItems.Update(item);
+        LoadQuickItems();
+    }
+
+    private void MoveQuick(long id, bool up)
+    {
+        QuickItems.Move(id, up);
+        LoadQuickItems();
+    }
+
+    private void DeleteQuick(long id)
+    {
+        QuickItems.Delete(id);
+        LoadQuickItems();
+    }
 
     private void SaveServiceAccount()
     {

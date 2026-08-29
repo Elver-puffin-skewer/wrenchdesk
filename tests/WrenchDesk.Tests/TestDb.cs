@@ -20,6 +20,7 @@ public sealed class TestDb : IDisposable
     public MoneyRepo Money { get; }
     public ScheduleRepo Schedule { get; }
     public BackupService Backups { get; }
+    public QuickItemRepo QuickItems { get; }
     public WrenchDesk.Services.Google.CalendarSyncService CalendarSync { get; }
 
     public TestDb()
@@ -40,6 +41,7 @@ public sealed class TestDb : IDisposable
         Money = new MoneyRepo(Db, Settings);
         Schedule = new ScheduleRepo(Db);
         Backups = new BackupService(Db, Settings, NullLogger<BackupService>.Instance);
+        QuickItems = new QuickItemRepo(Db);
         CalendarSync = new WrenchDesk.Services.Google.CalendarSyncService(
             Schedule, Customers, Settings, NullLogger<WrenchDesk.Services.Google.CalendarSyncService>.Instance);
     }
@@ -62,13 +64,14 @@ public sealed class TestDb : IDisposable
     public long NewTicket(long customerId, int taxRateBp = 0, string status = TicketStatus.Estimate) =>
         Tickets.Create(new Ticket { CustomerId = customerId, TaxRateBp = taxRateBp, Status = status });
 
-    public void AddLine(long ticketId, string kind, decimal qty, decimal each, bool taxable)
+    public void AddLine(long ticketId, string kind, decimal qty, decimal each, bool taxable,
+        string? description = null)
     {
         var line = new TicketLine
         {
             TicketId = ticketId,
             Kind = kind,
-            Description = kind,
+            Description = description ?? kind,
             UnitCents = (long)Math.Round(each * 100m, MidpointRounding.AwayFromZero),
             Taxable = taxable
         };
