@@ -42,6 +42,41 @@ public class Db
         }.ToString();
     }
 
+    /// <summary>
+    /// True when the records have been pointed at a network share or mapped drive.
+    ///
+    /// This is worth shouting about. SQLite depends on file locking that Windows file sharing does
+    /// not reliably provide, and the write-ahead log needs shared memory that does not exist across
+    /// a network at all. A shop database on a share can be corrupted outright — not "might be
+    /// slow", but lost. Two PCs opening it at once makes that near certain.
+    ///
+    /// Reaching WrenchDesk from another PC is what the LAN address is for: the shop PC keeps the
+    /// file and serves the pages, and the other machine just opens a browser.
+    /// </summary>
+    public bool DataIsOnNetworkLocation
+    {
+        get
+        {
+            try
+            {
+                var full = Path.GetFullPath(DataDirectory);
+
+                // \\server\share style.
+                if (full.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+
+                var root = Path.GetPathRoot(full);
+                if (string.IsNullOrEmpty(root)) return false;
+
+                return new DriveInfo(root).DriveType == DriveType.Network;
+            }
+            catch (Exception)
+            {
+                // Unreadable path is a separate problem; do not claim it is a network one.
+                return false;
+            }
+        }
+    }
+
     public SqliteConnection Open()
     {
         var conn = new SqliteConnection(_connectionString);
@@ -285,6 +320,34 @@ public class Db
             ('Ignition Coil', 'Part', 230),
             ('Relay', 'Part', 240),
             ('Safety Switch', 'Part', 250);
+        """,
+
+        // 4 -> 5: one ticket can cover several machines
+        """
+        -- A customer often brings two machines at once. Before this, that meant two tickets, two
+        -- totals and two invoices for one visit. A ticket now carries a row per machine, each with
+        -- its own complaint and its own account of what was done, under one total.
+        CREATE TABLE ticket_equipment (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id    INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+            equipment_id INTEGER NULL REFERENCES equipment(id) ON DELETE SET NULL,
+            complaint    TEXT NOT NULL DEFAULT '',
+            diagnosis    TEXT NOT NULL DEFAULT '',
+            sort_order   INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX ix_ticket_equipment ON ticket_equipment(ticket_id, sort_order);
+
+        -- Every existing ticket becomes a one-machine ticket, carrying its words across untouched.
+        INSERT INTO ticket_equipment (ticket_id, equipment_id, complaint, diagnosis, sort_order)
+        SELECT id, equipment_id, complaint, diagnosis, 0 FROM tickets;
+
+        -- Which machine a part or job was for. Null means the whole ticket, which is the only
+        -- sensible answer for a shop-supplies fee or a discount.
+        ALTER TABLE ticket_lines ADD COLUMN equipment_id INTEGER NULL REFERENCES equipment(id) ON DELETE SET NULL;
+
+        -- tickets.complaint, tickets.diagnosis and tickets.equipment_id are left in place but are
+        -- no longer read or written. Keeping them costs nothing and means the words above can be
+        -- recovered by hand if this migration ever turns out to have been wrong.
         """
     };
 }
@@ -313,6 +376,12 @@ public class SettingsStore
     public const string BackupDayOfWeek = "backup.day_of_week";
     public const string BackupKeepCount = "backup.keep_count";
     public const string BackupDestination = "backup.destination";
+
+    /// <summary>
+    /// A second place the scheduled backup also writes to. A shop keeping one drive at the bench
+    /// and one somewhere else wants both written the same night, not one of them by hand.
+    /// </summary>
+    public const string BackupDestination2 = "backup.destination_2";
 
     // Written by the scheduler, not by the settings screen.
     public const string BackupLastRun = "backup.last_run";
@@ -362,6 +431,7 @@ public class SettingsStore
         [BackupDayOfWeek] = "Friday",
         [BackupKeepCount] = "30",
         [BackupDestination] = "",
+        [BackupDestination2] = "",
         [BackupLastRun] = "",
         [BackupLastResult] = "",
         [BackupLastError] = "",

@@ -21,17 +21,30 @@ public class TicketRepo
     private static string NowUtc() => DateTime.UtcNow.ToString("O");
     private static string Today() => DateTime.Now.ToString("yyyy-MM-dd");
 
+    // Machine names and complaints are joined together, so a ticket covering a mower and a
+    // pressure washer reads as one row in the list rather than hiding the second machine.
     private const string RowSelect = """
-        SELECT tk.id, tk.number, tk.status, tk.complaint, tk.intake_on, tk.promised_on,
-               tk.customer_id, tk.equipment_id,
+        SELECT tk.id, tk.number, tk.status, tk.intake_on, tk.promised_on,
+               tk.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
                              TRIM(c.first_name || ' ' || c.last_name))) AS customer_name,
-               TRIM(COALESCE(e.year, '') || ' ' || COALESCE(e.make, '') || ' ' || COALESCE(e.model, '')) AS equipment_name,
+               (SELECT te.equipment_id FROM ticket_equipment te
+                 WHERE te.ticket_id = tk.id ORDER BY te.sort_order, te.id LIMIT 1) AS equipment_id,
+               (SELECT GROUP_CONCAT(name, ', ') FROM (
+                    SELECT TRIM(COALESCE(e.year, '') || ' ' || COALESCE(e.make, '') || ' ' || COALESCE(e.model, '')) AS name
+                    FROM ticket_equipment te
+                    LEFT JOIN equipment e ON e.id = te.equipment_id
+                    WHERE te.ticket_id = tk.id AND e.id IS NOT NULL
+                    ORDER BY te.sort_order, te.id)) AS equipment_name,
+               (SELECT GROUP_CONCAT(complaint, ' / ') FROM (
+                    SELECT te.complaint FROM ticket_equipment te
+                    WHERE te.ticket_id = tk.id AND TRIM(te.complaint) <> ''
+                    ORDER BY te.sort_order, te.id)) AS complaint,
+               (SELECT COUNT(*) FROM ticket_equipment te WHERE te.ticket_id = tk.id) AS machine_count,
                tt.total_cents,
                tp.paid_cents
         FROM tickets tk
         JOIN customers c       ON c.id = tk.customer_id
-        LEFT JOIN equipment e  ON e.id = tk.equipment_id
         JOIN ticket_totals tt  ON tt.ticket_id = tk.id
         JOIN ticket_paid tp    ON tp.ticket_id = tk.id
         """;
@@ -55,10 +68,14 @@ public class TicketRepo
         if (!string.IsNullOrWhiteSpace(term))
         {
             clauses.Add("""
-                (tk.number LIKE @q OR tk.complaint LIKE @q OR tk.diagnosis LIKE @q
+                (tk.number LIKE @q
                  OR c.first_name LIKE @q OR c.last_name LIKE @q OR c.business_name LIKE @q
                  OR c.phone LIKE @q
-                 OR e.make LIKE @q OR e.model LIKE @q OR e.serial LIKE @q)
+                 OR EXISTS (SELECT 1 FROM ticket_equipment te
+                            LEFT JOIN equipment e ON e.id = te.equipment_id
+                            WHERE te.ticket_id = tk.id
+                              AND (te.complaint LIKE @q OR te.diagnosis LIKE @q
+                                   OR e.make LIKE @q OR e.model LIKE @q OR e.serial LIKE @q)))
                 """);
             param.Add("q", $"%{term.Trim()}%");
         }
@@ -77,8 +94,12 @@ public class TicketRepo
     public List<TicketRow> ForEquipment(long equipmentId)
     {
         using var conn = _db.Open();
-        return conn.Query<TicketRow>($"{RowSelect} WHERE tk.equipment_id = @equipmentId ORDER BY tk.id DESC;",
-            new { equipmentId }).ToList();
+        return conn.Query<TicketRow>($"""
+            {RowSelect}
+            WHERE EXISTS (SELECT 1 FROM ticket_equipment te
+                          WHERE te.ticket_id = tk.id AND te.equipment_id = @equipmentId)
+            ORDER BY tk.id DESC;
+            """, new { equipmentId }).ToList();
     }
 
     public List<TicketRow> OpenBoard()
@@ -142,10 +163,10 @@ public class TicketRepo
 
         var id = conn.ExecuteScalar<long>("""
             INSERT INTO tickets
-                (number, customer_id, equipment_id, status, complaint, diagnosis, notes,
+                (number, customer_id, status, notes,
                  tax_rate_bp, intake_on, promised_on, completed_on, closed_on, created_utc, updated_utc)
             VALUES
-                (@Number, @CustomerId, @EquipmentId, @Status, @Complaint, @Diagnosis, @Notes,
+                (@Number, @CustomerId, @Status, @Notes,
                  @TaxRateBp, @IntakeOn, @PromisedOn, @CompletedOn, @ClosedOn, @CreatedUtc, @UpdatedUtc);
             SELECT last_insert_rowid();
             """, t, tx);
@@ -160,8 +181,7 @@ public class TicketRepo
         t.UpdatedUtc = NowUtc();
         conn.Execute("""
             UPDATE tickets SET
-                customer_id = @CustomerId, equipment_id = @EquipmentId, status = @Status,
-                complaint = @Complaint, diagnosis = @Diagnosis, notes = @Notes,
+                customer_id = @CustomerId, status = @Status, notes = @Notes,
                 tax_rate_bp = @TaxRateBp, intake_on = @IntakeOn, promised_on = @PromisedOn,
                 completed_on = @CompletedOn, closed_on = @ClosedOn, updated_utc = @UpdatedUtc
             WHERE id = @Id;
@@ -196,6 +216,74 @@ public class TicketRepo
 
     // ---- Line items ----
 
+    // ---- Machines on a ticket ----
+
+    /// <summary>The machines this ticket covers, in the order they were added.</summary>
+    public List<TicketEquipment> Machines(long ticketId)
+    {
+        using var conn = _db.Open();
+        return conn.Query<TicketEquipment>("""
+            SELECT te.*,
+                   TRIM(COALESCE(e.year, '') || ' ' || COALESCE(e.make, '') || ' ' || COALESCE(e.model, '')) AS equipment_name
+            FROM ticket_equipment te
+            LEFT JOIN equipment e ON e.id = te.equipment_id
+            WHERE te.ticket_id = @ticketId
+            ORDER BY te.sort_order, te.id;
+            """, new { ticketId }).ToList();
+    }
+
+    public long AddMachine(TicketEquipment machine)
+    {
+        using var conn = _db.Open();
+
+        if (machine.SortOrder == 0)
+        {
+            machine.SortOrder = (conn.ExecuteScalar<int?>(
+                "SELECT MAX(sort_order) FROM ticket_equipment WHERE ticket_id = @TicketId;", machine) ?? 0) + 10;
+        }
+
+        return conn.ExecuteScalar<long>("""
+            INSERT INTO ticket_equipment (ticket_id, equipment_id, complaint, diagnosis, sort_order)
+            VALUES (@TicketId, @EquipmentId, @Complaint, @Diagnosis, @SortOrder);
+            SELECT last_insert_rowid();
+            """, machine);
+    }
+
+    public void UpdateMachine(TicketEquipment machine)
+    {
+        using var conn = _db.Open();
+        conn.Execute("""
+            UPDATE ticket_equipment SET
+                equipment_id = @EquipmentId, complaint = @Complaint,
+                diagnosis = @Diagnosis, sort_order = @SortOrder
+            WHERE id = @Id;
+            """, machine);
+    }
+
+    /// <summary>
+    /// Takes a machine off a ticket. Any lines charged against it fall back to the ticket as a
+    /// whole rather than vanishing, so removing a machine never quietly changes the total.
+    /// </summary>
+    public void RemoveMachine(long machineId)
+    {
+        using var conn = _db.Open();
+        using var tx = conn.BeginTransaction();
+
+        var row = conn.QuerySingleOrDefault<TicketEquipment>(
+            "SELECT * FROM ticket_equipment WHERE id = @machineId;", new { machineId }, tx);
+
+        if (row is not null && row.EquipmentId is not null)
+        {
+            conn.Execute("""
+                UPDATE ticket_lines SET equipment_id = NULL
+                WHERE ticket_id = @ticketId AND equipment_id = @equipmentId;
+                """, new { ticketId = row.TicketId, equipmentId = row.EquipmentId }, tx);
+        }
+
+        conn.Execute("DELETE FROM ticket_equipment WHERE id = @machineId;", new { machineId }, tx);
+        tx.Commit();
+    }
+
     public long AddLine(TicketLine line)
     {
         using var conn = _db.Open();
@@ -206,8 +294,8 @@ public class TicketRepo
         }
 
         return conn.ExecuteScalar<long>("""
-            INSERT INTO ticket_lines (ticket_id, sort_order, kind, description, qty_milli, unit_cents, taxable)
-            VALUES (@TicketId, @SortOrder, @Kind, @Description, @QtyMilli, @UnitCents, @Taxable);
+            INSERT INTO ticket_lines (ticket_id, sort_order, kind, description, qty_milli, unit_cents, taxable, equipment_id)
+            VALUES (@TicketId, @SortOrder, @Kind, @Description, @QtyMilli, @UnitCents, @Taxable, @EquipmentId);
             SELECT last_insert_rowid();
             """, line);
     }
@@ -218,7 +306,8 @@ public class TicketRepo
         conn.Execute("""
             UPDATE ticket_lines SET
                 sort_order = @SortOrder, kind = @Kind, description = @Description,
-                qty_milli = @QtyMilli, unit_cents = @UnitCents, taxable = @Taxable
+                qty_milli = @QtyMilli, unit_cents = @UnitCents, taxable = @Taxable,
+                equipment_id = @EquipmentId
             WHERE id = @Id;
             """, line);
     }
@@ -240,21 +329,27 @@ public class TicketRepo
         var copy = new Ticket
         {
             CustomerId = source.CustomerId,
-            EquipmentId = source.EquipmentId,
             Status = TicketStatus.Estimate,
-            Complaint = source.Complaint,
-            Diagnosis = source.Diagnosis,
             Notes = source.Notes,
             TaxRateBp = source.TaxRateBp,
             IntakeOn = Today()
         };
 
         var newId = Create(copy);
+
+        // The machines and what was said about them are the point of the copy.
+        foreach (var machine in Machines(sourceId))
+        {
+            machine.TicketId = newId;
+            AddMachine(machine);
+        }
+
         foreach (var line in Lines(sourceId))
         {
             line.TicketId = newId;
             AddLine(line);
         }
+
         return newId;
     }
 

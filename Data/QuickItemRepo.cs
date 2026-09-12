@@ -115,4 +115,24 @@ public class QuickItemRepo
             LIMIT 1;
             """, new { name = item.Name }) ?? 0;
     }
+
+    /// <summary>
+    /// The last price charged for every item at once, so the settings screen can show the whole
+    /// price list without a query per row. Lets the shop see what a supplier increase has done
+    /// across everything, rather than discovering it one ticket at a time.
+    /// </summary>
+    public Dictionary<string, long> LastChargedByName()
+    {
+        using var conn = _db.Open();
+
+        // SQLite returns the row that produced MAX(id) for the bare columns beside it, which is
+        // how this picks the newest line per description in one pass.
+        return conn.Query<(string Description, long UnitCents)>("""
+            SELECT description, unit_cents, MAX(id)
+            FROM ticket_lines
+            WHERE unit_cents > 0
+            GROUP BY description;
+            """)
+            .ToDictionary(r => r.Description, r => r.UnitCents, StringComparer.OrdinalIgnoreCase);
+    }
 }

@@ -102,8 +102,14 @@
     <div class="card-body" style="padding-bottom:.5rem">
         <p class="muted small" style="margin-bottom:1rem">
             The parts and jobs you do over and over. They appear as buttons on every ticket, so a
-            line is one click instead of typing. Leave the price at 0 and WrenchDesk uses whatever
-            you last charged for that item — set one only if it never changes.
+            line is one click instead of typing.
+        </p>
+        <p class="muted small" style="margin-bottom:1rem">
+            <strong>Prices look after themselves.</strong> <em>Last charged</em> is what each button
+            will put on the next ticket, taken from your own tickets — when a supplier puts a price
+            up, change it once on a ticket and every one after that follows. Only fill in
+            <em>Fixed price</em> for something that genuinely never varies; it overrides the
+            remembered one.
         </p>
 
         <div class="form-grid" style="align-items:end">
@@ -143,7 +149,8 @@
                     <th class="shrink">Order</th>
                     <th>Name</th>
                     <th class="shrink">Type</th>
-                    <th class="num" style="width:7rem">Price</th>
+                    <th class="num" style="width:8rem">Last charged</th>
+                    <th class="num" style="width:7rem">Fixed price</th>
                     <th class="shrink">On tickets</th>
                     <th class="shrink"></th>
                 </tr>
@@ -168,6 +175,21 @@
                                 }
                             </select>
                         </td>
+                        <td class="num">
+                            @{ var lastCharged = _lastCharged.GetValueOrDefault(q.Name); }
+                            @if (q.DefaultCents > 0)
+                            {
+                                <span class="muted small">overridden</span>
+                            }
+                            else if (lastCharged > 0)
+                            {
+                                <span class="tnum">@Money.Fmt(lastCharged)</span>
+                            }
+                            else
+                            {
+                                <span class="muted small">not used yet</span>
+                            }
+                        </td>
                         <td>
                             <input type="text" class="tnum" style="text-align:right"
                                    value="@((q.DefaultCents / 100m).ToString("0.00"))"
@@ -189,6 +211,21 @@
 <div class="card">
     <div class="card-head"><h2>Your data</h2></div>
     <div class="card-body">
+        @if (Database.DataIsOnNetworkLocation)
+        {
+            <div class="alert alert-danger">
+                <strong>Your records are on a network location.</strong> Move them back onto this PC's
+                own drive. SQLite relies on file locking that Windows file sharing does not provide
+                properly, and a database kept on a share can be corrupted outright — not slowed down,
+                lost. Two PCs opening it at once makes that near certain.
+                <div class="small" style="margin-top:.35rem">
+                    To use WrenchDesk from another computer, leave the file here and open the
+                    <a href="/help#phone">phone / tablet address</a> in a browser on that machine.
+                    That is what it is for, and it is safe.
+                </div>
+            </div>
+        }
+
         <dl class="kv">
             <dt>Database file</dt>
             <dd class="mono small">@Database.DatabasePath</dd>
@@ -352,6 +389,48 @@
                     These backups land on the same drive as the live database. That protects you from a
                     mistake — deleting the wrong customer — but not from the drive itself failing.
                     Pick a USB or external drive to be covered for both.
+                </div>
+            }
+
+            <hr style="border:0;border-top:1px solid var(--line-2);margin:1rem 0" />
+
+            <label class="check" style="margin-bottom:.75rem">
+                <input type="checkbox" checked="@_secondEnabled" @onchange="OnSecondToggle" />
+                Write a second copy somewhere else at the same time
+            </label>
+
+            @if (_secondEnabled)
+            {
+                <div class="form-grid">
+                    <div class="field span-2">
+                        <label>Second place</label>
+                        <select value="@_secondRoot" @onchange="OnSecondRootChange">
+                            <option value="">— choose a drive —</option>
+                            @foreach (var d in _drives)
+                            {
+                                <option value="@d.Root">@d.Display</option>
+                            }
+                            <option value="@CustomPathOption">Somewhere else (a network folder, say)…</option>
+                        </select>
+                    </div>
+
+                    @if (_secondRoot != "")
+                    {
+                        <div class="field span-2">
+                            <label>@(_secondRoot == CustomPathOption ? "Full folder path" : "Folder on that drive")</label>
+                            <input type="text" @bind="_secondFolder" @bind:after="Save"
+                                   placeholder="@(_secondRoot == CustomPathOption ? @"\\router\usb\WrenchDesk" : "WrenchDesk Backups")" />
+                            <div class="muted small" style="margin-top:.2rem">
+                                Writing to <span class="mono">@SecondDestination()</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="alert alert-info" style="margin-bottom:0">
+                    Both copies are written on the same schedule. If one drive is unplugged that night,
+                    the other still gets written and Settings says which one failed — one missing drive
+                    never costs you both copies.
                 </div>
             }
 
@@ -726,6 +805,9 @@
     private int _keepCount = 30;
     private string _scheduleRoot = "";
     private string _scheduleFolder = DefaultFolderName;
+    private bool _secondEnabled;
+    private string _secondRoot = "";
+    private string _secondFolder = DefaultFolderName;
     private DateTime? _lastRun;
     private string _lastError = "";
 
@@ -764,6 +846,10 @@
         _lastError = Settings.Get(SettingsStore.BackupLastError);
 
         SplitStoredDestination(Settings.Get(SettingsStore.BackupDestination));
+
+        var second = Settings.Get(SettingsStore.BackupDestination2);
+        _secondEnabled = !string.IsNullOrWhiteSpace(second);
+        SplitSecondDestination(second);
 
         _dbSize = File.Exists(Database.DatabasePath) ? new FileInfo(Database.DatabasePath).Length : 0;
 
@@ -808,6 +894,52 @@
 
         var clean = folder.Trim().Trim('\\', '/');
         return string.IsNullOrWhiteSpace(clean) ? root : Path.Combine(root, clean);
+    }
+
+    /// <summary>Turns the stored second path back into the drive and folder the pickers work in.</summary>
+    private void SplitSecondDestination(string stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            _secondRoot = "";
+            _secondFolder = DefaultFolderName;
+            return;
+        }
+
+        var match = _drives.FirstOrDefault(d => stored.StartsWith(d.Root, StringComparison.OrdinalIgnoreCase));
+
+        if (match is not null)
+        {
+            _secondRoot = match.Root;
+            _secondFolder = stored[match.Root.Length..].Trim('\\', '/');
+            if (string.IsNullOrWhiteSpace(_secondFolder)) _secondFolder = DefaultFolderName;
+        }
+        else
+        {
+            _secondRoot = CustomPathOption;
+            _secondFolder = stored;
+        }
+    }
+
+    private string SecondDestination() => Combine(_secondRoot, _secondFolder);
+
+    private void OnSecondToggle(ChangeEventArgs e)
+    {
+        _secondEnabled = e.Value is bool b && b;
+        if (!_secondEnabled)
+        {
+            _secondRoot = "";
+            _secondFolder = DefaultFolderName;
+        }
+        Save();
+    }
+
+    private void OnSecondRootChange(ChangeEventArgs e)
+    {
+        _secondRoot = e.Value?.ToString() ?? "";
+        if (_secondRoot != CustomPathOption && string.IsNullOrWhiteSpace(_secondFolder))
+            _secondFolder = DefaultFolderName;
+        Save();
     }
 
     private string ScheduleDestination()
@@ -863,6 +995,7 @@
         _values[SettingsStore.BackupDayOfWeek] = _scheduleDay.ToString();
         _values[SettingsStore.BackupKeepCount] = Math.Clamp(_keepCount, 1, 500).ToString();
         _values[SettingsStore.BackupDestination] = Combine(_scheduleRoot, _scheduleFolder);
+        _values[SettingsStore.BackupDestination2] = _secondEnabled ? SecondDestination() : "";
 
         Settings.SetAll(_values);
         _flash = "Settings saved.";
@@ -996,7 +1129,13 @@
     private string _newQuickKind = "Part";
     private string? _quickError;
 
-    private void LoadQuickItems() => _quickAll = QuickItems.All();
+    private Dictionary<string, long> _lastCharged = new();
+
+    private void LoadQuickItems()
+    {
+        _quickAll = QuickItems.All();
+        _lastCharged = QuickItems.LastChargedByName();
+    }
 
     private void AddQuickItem()
     {

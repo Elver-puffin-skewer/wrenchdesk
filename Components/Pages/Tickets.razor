@@ -78,7 +78,13 @@
                             <td class="strong mono">@t.Number</td>
                             <td class="tnum small">@FormatIso(t.IntakeOn)</td>
                             <td>@t.CustomerName</td>
-                            <td class="small muted">@(string.IsNullOrWhiteSpace(t.EquipmentName) ? "—" : t.EquipmentName)</td>
+                            <td class="small muted">
+                                @(string.IsNullOrWhiteSpace(t.EquipmentName) ? "—" : Truncate(t.EquipmentName, 38))
+                                @if (t.MachineCount > 1)
+                                {
+                                    <span class="chip" style="margin-left:.3rem">@t.MachineCount machines</span>
+                                }
+                            </td>
                             <td class="small">@Truncate(t.Complaint, 44)</td>
                             <td><StatusBadge Status="@t.Status" /></td>
                             <td class="num">@Money.Fmt(t.TotalCents)</td>

@@ -280,6 +280,59 @@
             </section>
         }
 
+        @if (Matches(Get("two-machines")))
+        {
+            <section id="two-machines" class="card">
+                <div class="card-head"><h2>🚜 Two machines on one visit</h2></div>
+                <div class="card-body">
+                    <p>
+                        Somebody brings a mower <em>and</em> a pressure washer. That is one ticket, not two.
+                        At intake, tick every machine they left. On the ticket itself, press
+                        <strong>+ Another machine</strong> to add one you missed.
+                    </p>
+                    <p>
+                        <strong>Each machine keeps its own complaint and its own write-up.</strong> They do not
+                        run together into one box, so the invoice still reads machine by machine — but there is
+                        one total and one payment, which is what the customer actually settles.
+                    </p>
+                    <p>
+                        Once a ticket has more than one machine, each parts and labor line gets a
+                        <strong>For</strong> column so you can say which machine it was for. The printed invoice
+                        then groups the charges under each machine. Anything that applies to the whole visit —
+                        shop supplies, a discount — leave as <em>Whole ticket</em>.
+                    </p>
+                    <p style="margin-bottom:0" class="muted small">
+                        Taking a machine off a ticket never changes the total: its charges stay on the ticket and
+                        move to <em>Whole ticket</em>.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (Matches(Get("duplicates")))
+        {
+            <section id="duplicates" class="card">
+                <div class="card-head"><h2>👥 Entered someone twice?</h2></div>
+                <div class="card-body">
+                    <p>
+                        Easy to do at a counter — you write up a new customer and then spot they were already
+                        on the books. Open either record and press <strong>Merge / remove</strong>.
+                    </p>
+                    <p>
+                        Search for the record you want to <strong>keep</strong> and pick it. Everything on the
+                        one you are standing on — machines, tickets, payments, scheduled stops — moves across,
+                        and the duplicate is removed. Anything filled in on the duplicate but blank on the one
+                        you keep, like a phone number, is carried over rather than lost.
+                    </p>
+                    <p style="margin-bottom:0">
+                        If the duplicate has no work against it at all, the same screen simply offers to
+                        <strong>delete</strong> it. Archiving is still there for a customer who has stopped
+                        coming in but whose history you want to keep.
+                    </p>
+                </div>
+            </section>
+        }
+
         @if (Matches(Get("money")))
         {
             <section id="money" class="card">
@@ -456,6 +509,18 @@
                         off when a backup was due, it runs at the next opportunity rather than skipping it.
                     </p>
 
+                    <h3>Two drives, one local and one off site</h3>
+                    <p>
+                        Tick <strong>Write a second copy somewhere else at the same time</strong> under
+                        <a href="/settings">Automatic backups</a> and pick the second place. Both copies are
+                        written on the same schedule — one to the stick at the bench, one to wherever you keep
+                        the other, including a drive plugged into the router.
+                    </p>
+                    <p>
+                        If a drive is unplugged that night, the other copy is still written and Settings says
+                        which one failed. One missing drive never costs you both.
+                    </p>
+
                     <h3>Getting your records back</h3>
                     <p>
                         Every backup file is a complete, working copy — there is nothing else to restore. If the
@@ -512,10 +577,32 @@
                         </div>
                     }
 
-                    <p class="muted small" style="margin-bottom:0">
+                    <p class="muted small">
                         Two things to know: the shop PC has to be switched on and running WrenchDesk, and the first
                         time you run it Windows may ask whether to allow it on the network — say yes to
                         <strong>Private networks</strong> or the phone URL won't work.
+                    </p>
+
+                    <h3>From the house, on the same property</h3>
+                    <p>
+                        The same address works from a PC in the house, as long as both buildings are on the one
+                        network — the same router, or a wifi extender or cable running between them. Open the
+                        address in a browser there. Nothing to install, and no second computer to keep running.
+                    </p>
+
+                    <div class="alert alert-danger">
+                        <strong>Do not put the database on a network share.</strong> It looks like the obvious
+                        way to reach it from another PC and it is the one thing that can genuinely destroy your
+                        records. WrenchDesk stores everything in a SQLite file, which depends on file locking
+                        that Windows file sharing does not provide properly — and with two machines opening it
+                        at once, corruption is close to certain. The file stays on the shop PC; other machines
+                        reach it through the address above, which is safe because only one program is ever
+                        touching the file.
+                    </div>
+
+                    <p style="margin-bottom:0" class="muted small">
+                        If the house is on a different network entirely, that needs a VPN between the two rather
+                        than a share. Worth asking before setting one up.
                     </p>
                 </div>
             </section>
@@ -760,14 +847,20 @@
             "common items quick add parts list buttons repeat repeated typing shortcut price prices remember air filter spark plug belt oil change sharpen blades pulley"),
         new("customers", "👤", "Customers and their machines",
             "customer search find phone number equipment machine serial engine history archive delete"),
+        new("two-machines", "🚜", "Two machines on one visit",
+            "two machines multiple equipment second machine both same ticket one ticket separate complaint split invoice group"),
+        new("duplicates", "👥", "Entered someone twice?",
+            "duplicate double twice merge combine same customer delete remove archive two instances"),
         new("money", "💵", "Money",
             "money payment cash check card till takings weekly daily refund mistake deposit balance owed csv export bookkeeper walk-in"),
         new("schedule", "📅", "Pickups, deliveries and Google Calendar",
             "schedule pickup delivery calendar google sync appointment directions maps address driving"),
         new("backups", "💾", "Backups",
-            "backup restore lost data usb drive save copy crash recover deleted broken computer died new pc move"),
+            "backup restore lost data usb drive save copy crash recover deleted broken computer died new pc move "
+          + "two drives second copy offsite off site local router flash drive both same day"),
         new("phone", "📱", "Using it on a phone or tablet",
-            "phone tablet ipad wifi network address remote bench counter lan"),
+            "phone tablet ipad wifi network address remote bench counter lan "
+          + "home house away another computer pc share network share mapped drive nas remote access vpn"),
         new("printing", "🖨", "Printing estimates and invoices",
             "print estimate invoice paper signature receipt"),
         new("trouble", "🩺", "When something's wrong",

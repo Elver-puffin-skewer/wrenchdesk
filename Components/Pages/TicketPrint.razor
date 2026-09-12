@@ -69,36 +69,55 @@ else
                 }
             </div>
             <div>
-                <h4>Equipment</h4>
-                @if (_equipment is null)
+                <h4>@(_machines.Count > 1 ? "Equipment" : "Equipment")</h4>
+                @if (_machines.Count == 0)
                 {
                     <div class="muted">Not specified</div>
                 }
                 else
                 {
-                    <div><strong>@_equipment.DisplayName</strong></div>
-                    @if (!string.IsNullOrWhiteSpace(_equipment.Serial)) { <div>Serial: @_equipment.Serial</div> }
-                    @if (!string.IsNullOrWhiteSpace(_equipment.EngineMake) || !string.IsNullOrWhiteSpace(_equipment.EngineModel))
+                    @foreach (var machine in _machines)
                     {
-                        <div>Engine: @($"{_equipment.EngineMake} {_equipment.EngineModel}".Trim())</div>
+                        var details = machine.EquipmentId is null ? null : _equipmentById.GetValueOrDefault(machine.EquipmentId.Value);
+
+                        <div style="margin-bottom:.4rem">
+                            <div><strong>@machine.DisplayName</strong></div>
+                            @if (details is not null)
+                            {
+                                @if (!string.IsNullOrWhiteSpace(details.Serial)) { <div>Serial: @details.Serial</div> }
+                                @if (!string.IsNullOrWhiteSpace(details.EngineMake) || !string.IsNullOrWhiteSpace(details.EngineModel))
+                                {
+                                    <div>Engine: @($"{details.EngineMake} {details.EngineModel}".Trim())</div>
+                                }
+                            }
+                        </div>
                     }
                 }
             </div>
         </div>
 
-        @if (!string.IsNullOrWhiteSpace(_ticket.Complaint))
+        @foreach (var machine in _machines.Where(m => !string.IsNullOrWhiteSpace(m.Complaint)
+                                                    || !string.IsNullOrWhiteSpace(m.Diagnosis)))
         {
             <div style="margin-bottom:1rem">
-                <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Reported problem</h4>
-                <div style="white-space:pre-wrap">@_ticket.Complaint</div>
-            </div>
-        }
+                @if (_machines.Count > 1)
+                {
+                    <div style="font-weight:700;border-bottom:1px solid #ccc;padding-bottom:.15rem;margin-bottom:.4rem">
+                        @machine.DisplayName
+                    </div>
+                }
 
-        @if (!string.IsNullOrWhiteSpace(_ticket.Diagnosis))
-        {
-            <div style="margin-bottom:1rem">
-                <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Work performed</h4>
-                <div style="white-space:pre-wrap">@_ticket.Diagnosis</div>
+                @if (!string.IsNullOrWhiteSpace(machine.Complaint))
+                {
+                    <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Reported problem</h4>
+                    <div style="white-space:pre-wrap;margin-bottom:.5rem">@machine.Complaint</div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(machine.Diagnosis))
+                {
+                    <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Work performed</h4>
+                    <div style="white-space:pre-wrap">@machine.Diagnosis</div>
+                }
             </div>
         }
 
@@ -116,18 +135,47 @@ else
                 {
                     <tr><td colspan="4" class="muted">No parts or labor listed.</td></tr>
                 }
+                else if (_machines.Count > 1)
+                {
+                    @* Grouped so the customer can see what was spent on which machine. *@
+                    @foreach (var machine in _machines)
+                    {
+                        var forThis = _lines.Where(l => l.EquipmentId == machine.EquipmentId && machine.EquipmentId is not null).ToList();
+                        if (forThis.Count == 0) continue;
+
+                        <tr><td colspan="4" style="background:#f0f0f0;font-weight:700">@machine.DisplayName</td></tr>
+                        @foreach (var l in forThis)
+                        {
+                            <tr>
+                                <td style="padding-left:1.2rem">@PrintDescription(l)</td>
+                                <td class="num">@l.Qty.ToString("0.###")</td>
+                                <td class="num">@Money.Fmt(l.UnitCents)</td>
+                                <td class="num">@Money.Fmt(l.TotalCents)</td>
+                            </tr>
+                        }
+                    }
+
+                    var shared = _lines.Where(l => l.EquipmentId is null).ToList();
+                    if (shared.Count > 0)
+                    {
+                        <tr><td colspan="4" style="background:#f0f0f0;font-weight:700">Whole ticket</td></tr>
+                        @foreach (var l in shared)
+                        {
+                            <tr>
+                                <td style="padding-left:1.2rem">@PrintDescription(l)</td>
+                                <td class="num">@l.Qty.ToString("0.###")</td>
+                                <td class="num">@Money.Fmt(l.UnitCents)</td>
+                                <td class="num">@Money.Fmt(l.TotalCents)</td>
+                            </tr>
+                        }
+                    }
+                }
                 else
                 {
                     @foreach (var l in _lines)
                     {
                         <tr>
-                            <td>
-                                @(string.IsNullOrWhiteSpace(l.Description) ? l.Kind : l.Description)
-                                @if (l.Kind is "Labor" or "Fee" or "Discount")
-                                {
-                                    <span class="muted small"> (@l.Kind)</span>
-                                }
-                            </td>
+                            <td>@PrintDescription(l)</td>
                             <td class="num">@l.Qty.ToString("0.###")</td>
                             <td class="num">@Money.Fmt(l.UnitCents)</td>
                             <td class="num">@Money.Fmt(l.TotalCents)</td>
@@ -177,7 +225,8 @@ else
 
     private Ticket? _ticket;
     private Customer? _customer;
-    private Equipment? _equipment;
+    private List<TicketEquipment> _machines = new();
+    private Dictionary<long, Equipment> _equipmentById = new();
     private List<TicketLine> _lines = new();
     private TicketTotals _totals = new();
     private Dictionary<string, string> _settings = new();
@@ -190,7 +239,9 @@ else
         if (_ticket is null) return;
 
         _customer = Customers.Get(_ticket.CustomerId);
-        _equipment = _ticket.EquipmentId is null ? null : Customers.GetEquipment(_ticket.EquipmentId.Value);
+        _machines = Tickets.Machines(Id);
+        _equipmentById = Customers.EquipmentFor(_ticket.CustomerId, includeArchived: true)
+            .ToDictionary(e => e.Id);
         _lines = Tickets.Lines(Id);
 
         var paid = Payments.ForTicket(Id).Sum(p => p.AmountCents);
@@ -198,6 +249,12 @@ else
 
         // Still quoting means it prints as an estimate; once the work is authorised it is a bill.
         _isInvoice = _ticket.Status != TicketStatus.Estimate && _ticket.Status != TicketStatus.Declined;
+    }
+
+    private static string PrintDescription(TicketLine line)
+    {
+        var text = string.IsNullOrWhiteSpace(line.Description) ? line.Kind : line.Description;
+        return line.Kind is "Labor" or "Fee" or "Discount" ? $"{text} ({line.Kind})" : text;
     }
 
     private static string FormatIso(string? iso) =>

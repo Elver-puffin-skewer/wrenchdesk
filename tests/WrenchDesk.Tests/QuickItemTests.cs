@@ -167,6 +167,75 @@ public class QuickItemTests
     }
 
     [Fact]
+    public void Putting_a_price_up_on_a_ticket_carries_to_every_one_after_it()
+    {
+        using var h = new TestDb();
+        var customerId = h.NewCustomer();
+        var airFilter = h.QuickItems.Active().First(i => i.Name == "Air Filter");
+
+        // Fitted at the old price.
+        var firstTicket = h.NewTicket(customerId);
+        h.AddLine(firstTicket, "Part", 1, 12.99m, taxable: true, description: "Air Filter");
+        Assert.Equal(1299, h.QuickItems.StartingPriceFor(airFilter));
+
+        // The supplier puts it up. The shop clicks the button on a new ticket, which comes in at
+        // the old price, and simply types over it — no separate price list to remember to update.
+        var nextTicket = h.NewTicket(customerId);
+        var line = new TicketLine
+        {
+            TicketId = nextTicket,
+            Kind = "Part",
+            Description = "Air Filter",
+            UnitCents = h.QuickItems.StartingPriceFor(airFilter)
+        };
+        var lineId = h.Tickets.AddLine(line);
+
+        line.Id = lineId;
+        line.UnitCents = 1599;
+        h.Tickets.UpdateLine(line);
+
+        // From here on, every Air Filter starts at the new price.
+        Assert.Equal(1599, h.QuickItems.StartingPriceFor(airFilter));
+    }
+
+    [Fact]
+    public void A_price_correction_on_the_line_just_added_is_what_sticks()
+    {
+        using var h = new TestDb();
+        var customerId = h.NewCustomer();
+        var plug = h.QuickItems.Active().First(i => i.Name == "Spark Plug");
+
+        // Typed in wrongly, then fixed on the same line before the ticket is finished.
+        var ticketId = h.NewTicket(customerId);
+        var line = new TicketLine { TicketId = ticketId, Kind = "Part", Description = "Spark Plug", UnitCents = 429 };
+        line.Id = h.Tickets.AddLine(line);
+
+        line.UnitCents = 489;
+        h.Tickets.UpdateLine(line);
+
+        Assert.Equal(489, h.QuickItems.StartingPriceFor(plug));
+    }
+
+    [Fact]
+    public void The_whole_price_list_can_be_read_at_once()
+    {
+        using var h = new TestDb();
+        var customerId = h.NewCustomer();
+        var ticketId = h.NewTicket(customerId);
+
+        h.AddLine(ticketId, "Part", 1, 12.99m, taxable: true, description: "Air Filter");
+        h.AddLine(ticketId, "Part", 1, 4.29m, taxable: true, description: "Spark Plug");
+        h.AddLine(ticketId, "Part", 2, 14.50m, taxable: true, description: "Air Filter");
+
+        var prices = h.QuickItems.LastChargedByName();
+
+        // The newest price per item, so a settings screen can show the lot without a query each.
+        Assert.Equal(1450, prices["Air Filter"]);
+        Assert.Equal(429, prices["Spark Plug"]);
+        Assert.False(prices.ContainsKey("Pulley"));
+    }
+
+    [Fact]
     public void Existing_shops_get_the_list_when_they_update()
     {
         // The list arrives as a migration, so a database created before this feature picks it up

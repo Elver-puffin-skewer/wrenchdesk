@@ -64,6 +64,14 @@ public class BackupService
         }
     }
 
+    /// <summary>
+    /// A second folder the scheduled backup also writes to, or empty. A shop keeping one drive at
+    /// the bench and another elsewhere wants both written the same night.
+    /// </summary>
+    public string SecondDestination => _settings.Get(SettingsStore.BackupDestination2);
+
+    public bool HasSecondDestination => !string.IsNullOrWhiteSpace(SecondDestination);
+
     public bool AutoEnabled => _settings.GetBool(SettingsStore.BackupAutoEnabled);
 
     public int KeepCount
@@ -188,15 +196,38 @@ public class BackupService
 
         var result = CreateBackup(ScheduledDestination, label: "auto", applyRetention: true);
 
+        // The second copy is written even when it is the one that matters — a drive that is
+        // unplugged must not stop the first copy being recorded as done.
+        BackupResult? second = null;
+        if (HasSecondDestination)
+        {
+            second = CreateBackup(SecondDestination, label: "auto", applyRetention: true);
+
+            if (!second.Success)
+            {
+                _log.LogWarning("Second backup destination failed: {Error}", second.Error);
+                _settings.Set(SettingsStore.BackupLastError,
+                    $"{now:yyyy-MM-dd HH:mm} — second copy failed: {second.Error}");
+            }
+        }
+
         if (result.Success)
         {
             // Only a success advances the clock, so a failed run is retried on the next tick
             // rather than being silently skipped until tomorrow.
+            var summary = second is { Success: true }
+                ? $"Saved to {result.Path} and {second.Path}"
+                : second is not null
+                    ? $"Saved to {result.Path}. Second copy failed: {second.Error}"
+                    : $"Saved to {result.Path}";
+
             _settings.SetAll(new Dictionary<string, string>
             {
                 [SettingsStore.BackupLastRun] = now.ToString("yyyy-MM-dd HH:mm:ss"),
-                [SettingsStore.BackupLastResult] = $"Saved to {result.Path}",
-                [SettingsStore.BackupLastError] = ""
+                [SettingsStore.BackupLastResult] = summary,
+                [SettingsStore.BackupLastError] = second is { Success: false }
+                    ? $"{now:yyyy-MM-dd HH:mm} — second copy failed: {second.Error}"
+                    : ""
             });
         }
         else

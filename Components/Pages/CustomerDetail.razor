@@ -27,6 +27,7 @@ else
         <div class="spacer"></div>
         <div class="btn-row no-print">
             <a class="btn" href="@($"/customers/{Id}/edit")">Edit</a>
+            <button class="btn" @onclick="OpenMerge">Merge / remove</button>
             <a class="btn btn-primary" href="@($"/tickets/new?customerId={Id}")">+ New Ticket</a>
         </div>
     </div>
@@ -260,6 +261,100 @@ else
     </div>
 }
 
+@if (_mergeOpen && _customer is not null)
+{
+    <Modal Title="@($"Merge or remove {_customer.DisplayName}")" OnClose="() => _mergeOpen = false" Wide="true">
+        <ChildContent>
+            @if (_mergeError is not null)
+            {
+                <div class="alert alert-danger">@_mergeError</div>
+            }
+
+            <p class="muted small">
+                Entered the same person twice? Merging moves everything from this record onto the one
+                you keep, then removes this one. Nothing is lost.
+            </p>
+
+            <div class="alert alert-info">
+                <strong>This record has</strong>
+                @_mergeCounts.Tickets ticket(s), @_mergeCounts.Equipment machine(s),
+                @_mergeCounts.Payments payment(s) and @_mergeCounts.Appointments scheduled stop(s).
+                All of it moves to whoever you pick.
+            </div>
+
+            <div class="field">
+                <label>Keep this customer instead</label>
+                <input type="search" placeholder="Search for the record to keep…"
+                       value="@_mergeQuery" @oninput="OnMergeSearch" />
+            </div>
+
+            @if (_mergeMatches.Count > 0)
+            {
+                <div class="table-wrap" style="border:1px solid var(--line);border-radius:6px">
+                    <table class="data">
+                        <tbody>
+                            @foreach (var candidate in _mergeMatches.Take(8))
+                            {
+                                var target = candidate;
+                                <tr style="cursor:pointer" @onclick="() => _mergeTarget = target">
+                                    <td class="shrink">
+                                        <input type="radio" checked="@(_mergeTarget?.Id == target.Id)" />
+                                    </td>
+                                    <td class="strong">@target.DisplayName</td>
+                                    <td class="tnum small">@target.Phone</td>
+                                    <td class="muted small">@target.City</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (_mergeTarget is not null)
+            {
+                <div class="alert alert-warn" style="margin-top:1rem;margin-bottom:0">
+                    Everything above moves to <strong>@_mergeTarget.DisplayName</strong>, and
+                    <strong>@_customer.DisplayName</strong> is removed. Any detail filled in here but
+                    blank there — a phone number, an address — is carried across rather than dropped.
+                </div>
+            }
+
+            <hr style="border:0;border-top:1px solid var(--line-2);margin:1.25rem 0" />
+
+            <h3>Or remove this record on its own</h3>
+            @if (_canDelete)
+            {
+                <p class="muted small">
+                    Nothing is attached to it, so it can simply be deleted.
+                </p>
+            }
+            else
+            {
+                <p class="muted small">
+                    It has work against it, so deleting would lose that history. Merge it into the record
+                    you are keeping, or archive it to get it out of the list.
+                </p>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _mergeOpen = false">Cancel</button>
+
+            @if (_canDelete)
+            {
+                <button class="btn btn-danger" @onclick="DeleteCustomer">Delete this record</button>
+            }
+            else
+            {
+                <button class="btn" @onclick="ArchiveCustomer">Archive instead</button>
+            }
+
+            <button class="btn btn-primary" @onclick="DoMerge" disabled="@(_mergeTarget is null)">
+                Merge into the one I picked
+            </button>
+        </Footer>
+    </Modal>
+}
+
 @if (_equipmentModalOpen)
 {
     <Modal Title="@(_editEquipment.Id == 0 ? "Add equipment" : "Edit equipment")" OnClose="CloseEquipment">
@@ -336,6 +431,14 @@ else
     private long _billedCents, _paidCents;
     private int _ticketCount;
 
+    private bool _mergeOpen;
+    private string _mergeQuery = "";
+    private List<Customer> _mergeMatches = new();
+    private Customer? _mergeTarget;
+    private string? _mergeError;
+    private bool _canDelete;
+    private (int Tickets, int Equipment, int Payments, int Appointments) _mergeCounts;
+
     private bool _equipmentModalOpen;
     private Equipment _editEquipment = new();
 
@@ -352,6 +455,62 @@ else
         _appointments = Schedule.ForCustomer(Id);
 
         (_billedCents, _paidCents, _ticketCount) = Customers.LifetimeTotals(Id);
+    }
+
+    private void OpenMerge()
+    {
+        _mergeError = null;
+        _mergeQuery = "";
+        _mergeMatches = new();
+        _mergeTarget = null;
+
+        _mergeCounts = Customers.MergePreview(Id);
+        _canDelete = _mergeCounts.Tickets == 0 && _mergeCounts.Payments == 0;
+
+        _mergeOpen = true;
+    }
+
+    private void OnMergeSearch(ChangeEventArgs e)
+    {
+        _mergeQuery = e.Value?.ToString() ?? "";
+
+        // Never offer this record as its own merge target.
+        _mergeMatches = string.IsNullOrWhiteSpace(_mergeQuery)
+            ? new()
+            : Customers.Search(_mergeQuery, includeArchived: true).Where(c => c.Id != Id).ToList();
+    }
+
+    private void DoMerge()
+    {
+        if (_mergeTarget is null) return;
+
+        var problem = Customers.Merge(Id, _mergeTarget.Id);
+        if (problem is not null)
+        {
+            _mergeError = problem;
+            return;
+        }
+
+        Nav.NavigateTo($"/customers/{_mergeTarget.Id}");
+    }
+
+    private void DeleteCustomer()
+    {
+        var problem = Customers.TryDelete(Id);
+        if (problem is not null)
+        {
+            _mergeError = problem;
+            return;
+        }
+
+        Nav.NavigateTo("/customers");
+    }
+
+    private void ArchiveCustomer()
+    {
+        Customers.SetArchived(Id, true);
+        _mergeOpen = false;
+        Load();
     }
 
     private int RepairCount(long equipmentId) => _tickets.Count(t => t.EquipmentId == equipmentId);

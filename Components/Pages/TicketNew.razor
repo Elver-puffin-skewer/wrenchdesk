@@ -101,15 +101,36 @@
             }
             else
             {
-                <div class="field" style="margin:0">
-                    <label>Equipment</label>
-                    <select @bind="_equipmentId">
-                        <option value="0">— not specified —</option>
-                        @foreach (var e in _equipment)
-                        {
-                            <option value="@e.Id">@e.DisplayName @(string.IsNullOrWhiteSpace(e.Serial) ? "" : $"· {e.Serial}")</option>
-                        }
-                    </select>
+                <p class="muted small" style="margin-bottom:.6rem">
+                    Tick every machine they brought in. Two machines on one visit means one ticket,
+                    one total and one invoice — each still gets its own complaint and its own write-up.
+                </p>
+
+                @foreach (var e in _equipment)
+                {
+                    var machine = e;
+                    <label class="check" style="padding:.4rem 0">
+                        <input type="checkbox" checked="@_chosenEquipment.Contains(machine.Id)"
+                               @onchange="args => ToggleEquipment(machine.Id, args)" />
+                        <span>
+                            @machine.DisplayName
+                            @if (!string.IsNullOrWhiteSpace(machine.Serial))
+                            {
+                                <span class="muted small"> · @machine.Serial</span>
+                            }
+                        </span>
+                    </label>
+                }
+
+                <div class="muted small" style="margin-top:.5rem">
+                    @if (_chosenEquipment.Count == 0)
+                    {
+                        <span>None ticked — the ticket starts with one unspecified machine, which you can set later.</span>
+                    }
+                    else
+                    {
+                        <span>@_chosenEquipment.Count machine@(_chosenEquipment.Count == 1 ? "" : "s") on this ticket.</span>
+                    }
                 </div>
             }
         </div>
@@ -165,7 +186,7 @@
     private List<Customer> _customerMatches = new();
 
     private List<Equipment> _equipment = new();
-    private long _equipmentId;
+    private readonly HashSet<long> _chosenEquipment = new();
 
     private string _complaint = "";
     private DateTime _intakeOn = DateTime.Today;
@@ -194,8 +215,10 @@
     {
         _equipment = _customer is null ? new() : Customers.EquipmentFor(_customer.Id);
 
+        _chosenEquipment.Clear();
+
         // One machine on file is almost always the one that came in.
-        _equipmentId = _equipment.Count == 1 ? _equipment[0].Id : 0;
+        if (_equipment.Count == 1) _chosenEquipment.Add(_equipment[0].Id);
     }
 
     private void OnCustomerSearch(ChangeEventArgs e)
@@ -214,11 +237,17 @@
         LoadEquipment();
     }
 
+    private void ToggleEquipment(long equipmentId, ChangeEventArgs args)
+    {
+        if (args.Value is bool on && on) _chosenEquipment.Add(equipmentId);
+        else _chosenEquipment.Remove(equipmentId);
+    }
+
     private void ClearCustomer()
     {
         _customer = null;
         _equipment = new();
-        _equipmentId = 0;
+        _chosenEquipment.Clear();
     }
 
     private void OnTaxChange(ChangeEventArgs e)
@@ -241,15 +270,35 @@
         var ticket = new Ticket
         {
             CustomerId = _customer.Id,
-            EquipmentId = _equipmentId == 0 ? null : _equipmentId,
             Status = _status,
-            Complaint = _complaint,
             TaxRateBp = _taxRateBp,
             IntakeOn = _intakeOn.ToString("yyyy-MM-dd"),
             PromisedOn = _promisedOn?.ToString("yyyy-MM-dd")
         };
 
         var id = Tickets.Create(ticket);
+
+        // The complaint typed at intake belongs to the first machine. With several ticked it is
+        // usually about all of them, so it starts on the first and can be split on the ticket.
+        if (_chosenEquipment.Count == 0)
+        {
+            Tickets.AddMachine(new TicketEquipment { TicketId = id, Complaint = _complaint });
+        }
+        else
+        {
+            var first = true;
+            foreach (var equipmentId in _equipment.Where(e => _chosenEquipment.Contains(e.Id)).Select(e => e.Id))
+            {
+                Tickets.AddMachine(new TicketEquipment
+                {
+                    TicketId = id,
+                    EquipmentId = equipmentId,
+                    Complaint = first ? _complaint : ""
+                });
+                first = false;
+            }
+        }
+
         Nav.NavigateTo($"/tickets/{id}");
     }
 }

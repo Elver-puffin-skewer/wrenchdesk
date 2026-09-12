@@ -16,6 +16,7 @@ best time to call, dog in the yard). Search by any of it, including partial phon
 
 **Equipment** — every machine a customer owns, with make, model, serial, and engine make/model/serial.
 Each machine keeps its own repair count, so you can see the mower that's been in four times this year.
+A customer who drops off two machines at once gets **one ticket covering both** — see below.
 
 **Estimates and repairs** — one ticket per job. It starts as an *Estimate*, and when the customer says
 go ahead you move it to *Approved* → *In Progress* → *Waiting on Parts* → *Ready for Pickup* → *Closed*.
@@ -25,6 +26,16 @@ the customer's history rather than two disconnected pieces of paper.
 Each ticket takes labor, parts, fees, and discounts as separate lines, with per-line tax control
 (labor untaxed, parts taxed, or however your state works). Print it as an estimate with a signature
 line, or as an invoice once the work is authorised.
+
+**More than one machine on a ticket** — common in season, when somebody clears out the shed. Tick
+every machine at intake, or add one later with *+ Another machine*. Each machine keeps **its own
+complaint and its own write-up**, so the invoice still reads machine by machine, but there is one
+total and one payment. Each parts and labor line says which machine it was for; anything covering the
+whole visit stays unassigned.
+
+**Entered someone twice?** Open either record and press *Merge / remove*. Tickets, machines, payments
+and scheduled stops move onto the record you keep, blank fields are filled in from the duplicate, and
+the duplicate is deleted. A duplicate with no work against it can simply be deleted.
 
 **Money** — record payments as they come in, by cash, check, card or transfer. The dashboard shows
 today's takings and this week's; the Money page breaks it down day by day and week by week, splits it
@@ -46,8 +57,9 @@ a developer. It works offline and shows this shop's actual settings — where th
 backups are on, the exact URL to type into a phone — instead of generic instructions.
 
 **Backups** — the entire system is one SQLite file. Press **Back up now** to write a copy straight to
-a USB stick or external drive, or switch on a daily/weekly schedule that does it unattended.
-Scheduled backups are **off until you turn them on**. See [Backups](#backups) below.
+a USB stick or external drive, or switch on a daily/weekly schedule that does it unattended, to
+**one or two places at once** — a stick at the bench and a drive on the router, say. Scheduled
+backups are **off until you turn them on**. See [Backups](#backups) below.
 
 ---
 
@@ -146,6 +158,24 @@ The first time you run it, Windows Firewall may ask whether to allow WrenchDesk 
 yes to **Private networks** for the tablet URL to work. (Say no and it still works fine on the shop PC
 itself.)
 
+### Using it from another PC — the house on the same property
+
+The same URL. If the house and the shop are on one network — same router, or an extender or cable
+between the buildings — open that address in a browser on the house PC and you have the full app.
+Nothing to install there, and no second machine to keep running: the shop PC is already the server.
+
+> [!CAUTION]
+> **Do not put the database on a network share** and open it from two PCs. It looks like the obvious
+> answer and it is the one change that can actually destroy the records. SQLite depends on file
+> locking that SMB does not provide reliably, and WAL mode needs shared memory that does not exist
+> across a network at all; two machines with the file open at once will corrupt it. Leave the file on
+> the shop PC and reach it over HTTP as above — then exactly one process ever touches it, which is
+> the supported arrangement. If WrenchDesk finds its data directory on a share or mapped drive it
+> says so in red on the Settings page.
+
+If the house is on a *different* network, that's a VPN between the two sites (or Tailscale), not a
+file share.
+
 ### Starting it automatically with Windows
 
 Setup offers this on first run. To change your mind later, press `Win+R`, type `shell:startup`,
@@ -163,6 +193,10 @@ Documents\WrenchDesk\wrenchdesk.db
 
 To move the shop to a new PC, or to keep an off-site copy, copy that file. That's the whole system —
 there is no separate database server to install or configure.
+
+`DataDirectory` below can point anywhere **on a local disk**. Do not point it at a network share or
+mapped drive — see the caution under [Using it from another PC](#using-it-from-another-pc--the-house-on-the-same-property).
+Backups are a different matter: those are plain file copies and a share is fine for them.
 
 The program is a single file with its defaults compiled in, so there is no config file unless you
 want one. To change a setting, create `appsettings.json` next to `WrenchDesk.exe`
@@ -218,11 +252,22 @@ under **Settings → Automatic backups**. Then choose:
 | At what time | Pick a time the PC is normally on — after closing, before it gets switched off |
 | Keep how many | Older ones are removed past this count (default 30) |
 | Save them to | The data folder, or any drive — a USB stick left plugged in works well |
+| A second copy | Optional. Switches on a second destination written at the same time |
 
 If the PC was switched off when a backup was due, it runs at the next opportunity rather than
 skipping — a late backup beats no backup. Settings shows the last run, the next one due, and any
 error from the last attempt (an unplugged USB drive, most likely). A failed run is retried on the
 next check rather than being marked done.
+
+#### Two destinations at once
+
+Tick *Write a second copy somewhere else at the same time* and pick a second place — the natural
+pairing being a stick at the bench and a drive plugged into the router, so a fire or a theft at the
+bench doesn't take both. Both copies are written on the same schedule.
+
+If one of the two is unavailable — drive unplugged, router off — **the other is still written**, and
+Settings records which one failed. One missing drive never costs you both copies. Retention is
+applied to each destination separately.
 
 **Retention only ever deletes files WrenchDesk itself wrote** — files named `wrenchdesk-*.db`.
 Pointing it at a folder with your own documents in it cannot touch them. It also never deletes the
@@ -239,7 +284,7 @@ WrenchDesk, rename the backup to `wrenchdesk.db`, and put it where the old one w
 A backup on the same drive as the live database protects you from a mistake — deleting the wrong
 customer — but not from the drive itself failing. For a shop replacing paper, a cheap USB stick left
 plugged in, with a daily schedule pointed at it, covers both. Better still, keep a second one off
-site and swap them occasionally.
+site and swap them occasionally — or skip the swapping and let the schedule write to both at once.
 
 ---
 
@@ -282,8 +327,8 @@ Open **Settings** and fill in:
 
 ## Day-to-day
 
-**Machine comes in** → *+ New Ticket* → find the customer (or add them) → pick the machine → type
-what they said is wrong → Create.
+**Machine comes in** → *+ New Ticket* → find the customer (or add them) → tick the machine, or
+**every machine** if they brought more than one → type what they said is wrong → Create.
 
 **Quoting it** → open the ticket, add labor and parts lines → *Print* hands them an estimate with a
 signature line.
@@ -292,7 +337,8 @@ signature line.
 ticket as you use them.
 
 **Done** → move to *Ready for Pickup*. Write what you actually did in *What we found / did* — that's
-what prints on the invoice and what you'll want to read next time the machine comes back.
+what prints on the invoice and what you'll want to read next time the machine comes back. With two
+machines on the ticket there's one of those boxes per machine, and the invoice keeps them apart.
 
 **They pay** → *+ Payment* on the ticket. It defaults to the full balance, so most of the time it's
 two clicks. Move the ticket to *Closed*.

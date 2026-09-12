@@ -126,6 +126,27 @@ public class Ticket
     public string UpdatedUtc { get; set; } = "";
 }
 
+/// <summary>
+/// One machine on a ticket. A visit where somebody drops off a mower and a pressure washer is one
+/// ticket with two of these — each keeping its own complaint and its own record of the work, so the
+/// invoice still reads machine by machine.
+/// </summary>
+public class TicketEquipment
+{
+    public long Id { get; set; }
+    public long TicketId { get; set; }
+    public long? EquipmentId { get; set; }
+    public string Complaint { get; set; } = "";
+    public string Diagnosis { get; set; } = "";
+    public int SortOrder { get; set; }
+
+    /// <summary>Filled in by the joined query for display; not stored on this row.</summary>
+    public string EquipmentName { get; set; } = "";
+
+    public string DisplayName =>
+        string.IsNullOrWhiteSpace(EquipmentName) ? "Machine not specified" : EquipmentName;
+}
+
 public static class TicketStatus
 {
     public const string Estimate = "Estimate";
@@ -169,6 +190,9 @@ public class TicketLine
 
     public long UnitCents { get; set; }
     public bool Taxable { get; set; } = true;
+
+    /// <summary>Which machine this was for, on a ticket covering more than one. Null means the ticket as a whole.</summary>
+    public long? EquipmentId { get; set; }
 
     public static readonly string[] Kinds = { "Labor", "Part", "Fee", "Discount" };
 
@@ -309,6 +333,10 @@ public class TicketRow
     public string CustomerName { get; set; } = "";
     public long? EquipmentId { get; set; }
     public string EquipmentName { get; set; } = "";
+
+    /// <summary>How many machines the ticket covers, so a list can say so without a second query.</summary>
+    public int MachineCount { get; set; }
+
     public long TotalCents { get; set; }
     public long PaidCents { get; set; }
     public long BalanceCents => TotalCents - PaidCents;

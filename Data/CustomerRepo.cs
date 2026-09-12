@@ -109,6 +109,77 @@ public class CustomerRepo
         return null;
     }
 
+    /// <summary>
+    /// What merging one customer into another would move, so it can be shown before anything
+    /// happens rather than described afterwards.
+    /// </summary>
+    public (int Tickets, int Equipment, int Payments, int Appointments) MergePreview(long fromId)
+    {
+        using var conn = _db.Open();
+
+        return (
+            conn.ExecuteScalar<int>("SELECT COUNT(*) FROM tickets WHERE customer_id = @fromId;", new { fromId }),
+            conn.ExecuteScalar<int>("SELECT COUNT(*) FROM equipment WHERE customer_id = @fromId;", new { fromId }),
+            conn.ExecuteScalar<int>("SELECT COUNT(*) FROM payments WHERE customer_id = @fromId;", new { fromId }),
+            conn.ExecuteScalar<int>("SELECT COUNT(*) FROM appointments WHERE customer_id = @fromId;", new { fromId }));
+    }
+
+    /// <summary>
+    /// Folds a duplicate into the customer being kept: everything attached to it — machines,
+    /// tickets, payments, stops — moves across, then the duplicate is removed.
+    ///
+    /// Entering the same person twice is easy to do at a counter, and once they have work against
+    /// both records neither can simply be deleted without losing history. All of it happens in one
+    /// transaction, so a failure half way leaves both records exactly as they were.
+    /// </summary>
+    public string? Merge(long fromId, long intoId)
+    {
+        if (fromId == intoId) return "That is the same customer.";
+
+        using var conn = _db.Open();
+
+        var from = conn.QuerySingleOrDefault<Customer>("SELECT * FROM customers WHERE id = @fromId;", new { fromId });
+        var into = conn.QuerySingleOrDefault<Customer>("SELECT * FROM customers WHERE id = @intoId;", new { intoId });
+
+        if (from is null) return "The duplicate no longer exists.";
+        if (into is null) return "The customer to keep no longer exists.";
+
+        using var tx = conn.BeginTransaction();
+
+        conn.Execute("UPDATE equipment    SET customer_id = @intoId WHERE customer_id = @fromId;", new { fromId, intoId }, tx);
+        conn.Execute("UPDATE tickets      SET customer_id = @intoId WHERE customer_id = @fromId;", new { fromId, intoId }, tx);
+        conn.Execute("UPDATE payments     SET customer_id = @intoId WHERE customer_id = @fromId;", new { fromId, intoId }, tx);
+        conn.Execute("UPDATE appointments SET customer_id = @intoId WHERE customer_id = @fromId;", new { fromId, intoId }, tx);
+
+        // Anything filled in on the duplicate but blank on the survivor is worth keeping — it is
+        // usually why the second record got made in the first place.
+        conn.Execute("""
+            UPDATE customers SET
+                phone         = CASE WHEN TRIM(phone)         = '' THEN @Phone         ELSE phone         END,
+                phone_alt     = CASE WHEN TRIM(phone_alt)     = '' THEN @PhoneAlt      ELSE phone_alt     END,
+                email         = CASE WHEN TRIM(email)         = '' THEN @Email         ELSE email         END,
+                address1      = CASE WHEN TRIM(address1)      = '' THEN @Address1      ELSE address1      END,
+                address2      = CASE WHEN TRIM(address2)      = '' THEN @Address2      ELSE address2      END,
+                city          = CASE WHEN TRIM(city)          = '' THEN @City          ELSE city          END,
+                state         = CASE WHEN TRIM(state)         = '' THEN @State         ELSE state         END,
+                zip           = CASE WHEN TRIM(zip)           = '' THEN @Zip           ELSE zip           END,
+                business_name = CASE WHEN TRIM(business_name) = '' THEN @BusinessName  ELSE business_name END,
+                notes         = TRIM(notes || CASE WHEN TRIM(@Notes) = '' THEN '' ELSE char(10) || @Notes END),
+                updated_utc   = @now
+            WHERE id = @intoId;
+            """, new
+        {
+            from.Phone, from.PhoneAlt, from.Email, from.Address1, from.Address2,
+            from.City, from.State, from.Zip, from.BusinessName, from.Notes,
+            intoId, now = NowUtc()
+        }, tx);
+
+        conn.Execute("DELETE FROM customers WHERE id = @fromId;", new { fromId }, tx);
+        tx.Commit();
+
+        return null;
+    }
+
     // ---- Equipment ----
 
     public List<Equipment> EquipmentFor(long customerId, bool includeArchived = false)

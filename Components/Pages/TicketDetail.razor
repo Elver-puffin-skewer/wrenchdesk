@@ -23,7 +23,14 @@ else
             </h1>
             <p class="sub">
                 <a href="@($"/customers/{_ticket.CustomerId}")">@(_customer?.DisplayName ?? "Customer")</a>
-                @if (_equipment is not null) { <span> · @_equipment.DisplayName</span> }
+                @if (_machines.Count == 1 && _machines[0].EquipmentId is not null)
+                {
+                    <span> · @_machines[0].DisplayName</span>
+                }
+                else if (_machines.Count > 1)
+                {
+                    <span> · @_machines.Count machines</span>
+                }
                 <span> · in @FormatIso(_ticket.IntakeOn)</span>
                 @if (!string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · promised @FormatIso(_ticket.PromisedOn)</span> }
             </p>
@@ -56,21 +63,63 @@ else
 
     <div class="grid cols-2">
         <div class="card">
-            <div class="card-head"><h2>The job</h2></div>
+            <div class="card-head">
+                <h2>@(_machines.Count > 1 ? $"{_machines.Count} machines on this ticket" : "The job")</h2>
+                <div class="spacer"></div>
+                <button class="btn btn-sm no-print" @onclick="AddMachine">+ Another machine</button>
+            </div>
             <div class="card-body">
-                <div class="field">
-                    <label>Customer's complaint</label>
-                    <textarea rows="3" @bind="_ticket.Complaint" @bind:after="SaveTicket"></textarea>
-                </div>
-                <div class="field">
-                    <label>What we found / did</label>
-                    <textarea rows="4" placeholder="Carb gummed up, cleaned and rebuilt. New plug and fuel filter."
-                              @bind="_ticket.Diagnosis" @bind:after="SaveTicket"></textarea>
-                </div>
-                <div class="field" style="margin-bottom:0">
-                    <label>Internal notes <span class="muted" style="text-transform:none">(not printed)</span></label>
-                    <textarea rows="2" @bind="_ticket.Notes" @bind:after="SaveTicket"></textarea>
-                </div>
+                @if (_machines.Count == 0)
+                {
+                    <div class="muted small" style="margin-bottom:.75rem">
+                        No machine on this ticket yet.
+                        <button class="btn btn-sm" @onclick="AddMachine">Add one</button>
+                    </div>
+                }
+
+                @foreach (var entry in _machines)
+                {
+                    var machine = entry;
+                    var index = _machines.IndexOf(entry) + 1;
+
+                    <div class="machine-block">
+                        @if (_machines.Count > 1)
+                        {
+                            <div class="machine-head">
+                                <span class="machine-n">@index</span>
+                                <strong>@machine.DisplayName</strong>
+                                <div class="spacer"></div>
+                                <button class="btn btn-ghost btn-sm no-print" title="Take this machine off the ticket"
+                                        @onclick="() => RemoveMachine(machine.Id)">✕</button>
+                            </div>
+                        }
+
+                        <div class="field">
+                            <label>Machine</label>
+                            <select value="@(machine.EquipmentId?.ToString() ?? "0")"
+                                    @onchange="e => OnMachineEquipmentChange(machine, e)">
+                                <option value="0">— not specified —</option>
+                                @foreach (var e in _customerEquipment)
+                                {
+                                    <option value="@e.Id">@e.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label>Customer's complaint</label>
+                            <textarea rows="3" value="@machine.Complaint"
+                                      @onchange="e => OnMachineComplaintChange(machine, e)"></textarea>
+                        </div>
+
+                        <div class="field" style="margin-bottom:0">
+                            <label>What we found / did</label>
+                            <textarea rows="4" placeholder="Carb gummed up, cleaned and rebuilt. New plug and fuel filter."
+                                      value="@machine.Diagnosis"
+                                      @onchange="e => OnMachineDiagnosisChange(machine, e)"></textarea>
+                        </div>
+                    </div>
+                }
             </div>
         </div>
 
@@ -87,19 +136,14 @@ else
                         <input type="date" value="@_ticket.PromisedOn" @onchange="e => SetDate(e, d => _ticket!.PromisedOn = d)" />
                     </div>
                     <div class="field">
-                        <label>Equipment</label>
-                        <select value="@(_ticket.EquipmentId?.ToString() ?? "0")" @onchange="OnEquipmentChange">
-                            <option value="0">— not specified —</option>
-                            @foreach (var e in _customerEquipment)
-                            {
-                                <option value="@e.Id">@e.DisplayName</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="field">
                         <label>Sales tax %</label>
                         <input type="text" value="@((_ticket.TaxRateBp / 100m).ToString("0.####"))" @onchange="OnTaxChange" />
                     </div>
+                </div>
+
+                <div class="field">
+                    <label>Internal notes <span class="muted" style="text-transform:none">(not printed)</span></label>
+                    <textarea rows="2" @bind="_ticket.Notes" @bind:after="SaveTicket"></textarea>
                 </div>
 
                 <div class="btn-row" style="margin-top:.5rem">
@@ -135,9 +179,15 @@ else
                     @foreach (var item in _quickItems)
                     {
                         var quick = item;
+                        var price = _quickPrices.GetValueOrDefault(quick.Id);
+
                         <button class="quick-chip @(quick.Kind == "Labor" ? "labor" : "")"
-                                title="@quick.Kind" @onclick="() => AddQuickItem(quick)">
+                                title="@ChipTooltip(quick, price)" @onclick="() => AddQuickItem(quick)">
                             @quick.Name
+                            @if (price > 0)
+                            {
+                                <span class="quick-chip-price">@Money.Fmt(price)</span>
+                            }
                         </button>
                     }
                 </div>
@@ -162,6 +212,10 @@ else
                     <thead>
                         <tr>
                             <th style="width:7.5rem">Type</th>
+                            @if (_machines.Count > 1)
+                            {
+                                <th style="width:10rem">For</th>
+                            }
                             <th>Description</th>
                             <th class="num" style="width:6rem">Qty</th>
                             <th class="num" style="width:8rem">Each</th>
@@ -183,6 +237,19 @@ else
                                         }
                                     </select>
                                 </td>
+                                @if (_machines.Count > 1)
+                                {
+                                    <td>
+                                        <select value="@(l.EquipmentId?.ToString() ?? "0")"
+                                                @onchange="e => OnLineEquipmentChange(l, e)">
+                                            <option value="0">Whole ticket</option>
+                                            @foreach (var m in _machines.Where(m => m.EquipmentId is not null))
+                                            {
+                                                <option value="@m.EquipmentId">@m.DisplayName</option>
+                                            }
+                                        </select>
+                                    </td>
+                                }
                                 <td>
                                     <input type="text" placeholder="@PlaceholderFor(l.Kind)"
                                            value="@l.Description"
@@ -445,10 +512,13 @@ else
 
     private Ticket? _ticket;
     private Customer? _customer;
-    private Equipment? _equipment;
+    private List<TicketEquipment> _machines = new();
     private List<Equipment> _customerEquipment = new();
     private List<TicketLine> _lines = new();
     private List<QuickItem> _quickItems = new();
+
+    /// <summary>What each button will charge, worked out once per load rather than per render.</summary>
+    private Dictionary<long, long> _quickPrices = new();
     private List<PaymentRow> _payments = new();
     private List<AppointmentRow> _appointments = new();
     private TicketTotals _totals = new();
@@ -480,10 +550,11 @@ else
 
         _customer = Customers.Get(_ticket.CustomerId);
         _customerEquipment = Customers.EquipmentFor(_ticket.CustomerId, includeArchived: true);
-        _equipment = _ticket.EquipmentId is null ? null : _customerEquipment.FirstOrDefault(e => e.Id == _ticket.EquipmentId);
+        _machines = Tickets.Machines(Id);
 
         _lines = Tickets.Lines(Id);
         _quickItems = QuickItems.Active();
+        _quickPrices = _quickItems.ToDictionary(i => i.Id, QuickItems.StartingPriceFor);
         _payments = Payments.ForTicket(Id);
         _appointments = Schedule.ForTicket(Id);
         _totals = TicketTotals.From(_lines, _ticket.TaxRateBp, _payments.Sum(p => p.AmountCents));
@@ -516,13 +587,48 @@ else
         SaveTicket();
     }
 
-    private void OnEquipmentChange(ChangeEventArgs e)
+    // ---- Machines ----
+
+    private void AddMachine()
     {
-        if (_ticket is null) return;
-        var id = long.TryParse(e.Value?.ToString(), out var v) ? v : 0;
-        _ticket.EquipmentId = id == 0 ? null : id;
-        SaveTicket();
+        // A second machine on the same visit rather than a second ticket: one total, one invoice,
+        // but its own complaint and its own account of the work.
+        Tickets.AddMachine(new TicketEquipment { TicketId = Id });
         Load();
+    }
+
+    private void RemoveMachine(long machineId)
+    {
+        Tickets.RemoveMachine(machineId);
+        _flash = "Machine taken off this ticket. Any lines charged to it now apply to the whole ticket.";
+        Load();
+    }
+
+    private void OnMachineEquipmentChange(TicketEquipment machine, ChangeEventArgs e)
+    {
+        var id = long.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        machine.EquipmentId = id == 0 ? null : id;
+        Tickets.UpdateMachine(machine);
+        Load();
+    }
+
+    private void OnMachineComplaintChange(TicketEquipment machine, ChangeEventArgs e)
+    {
+        machine.Complaint = e.Value?.ToString() ?? "";
+        Tickets.UpdateMachine(machine);
+    }
+
+    private void OnMachineDiagnosisChange(TicketEquipment machine, ChangeEventArgs e)
+    {
+        machine.Diagnosis = e.Value?.ToString() ?? "";
+        Tickets.UpdateMachine(machine);
+    }
+
+    private void OnLineEquipmentChange(TicketLine line, ChangeEventArgs e)
+    {
+        var id = long.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        line.EquipmentId = id == 0 ? null : id;
+        SaveLine(line);
     }
 
     private void OnTaxChange(ChangeEventArgs e)
@@ -557,6 +663,15 @@ else
         Tickets.AddLine(line);
         _flash = $"Added {item.Name}.";
         Load();
+    }
+
+    private static string ChipTooltip(QuickItem item, long price)
+    {
+        if (price <= 0) return $"{item.Kind} — no price yet, type one in";
+
+        return item.DefaultCents > 0
+            ? $"{item.Kind} — {Money.Fmt(price)} (fixed price)"
+            : $"{item.Kind} — {Money.Fmt(price)}, what you last charged";
     }
 
     private void AddLine(string kind)
