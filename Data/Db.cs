@@ -33,11 +33,17 @@ public class Db
         Directory.CreateDirectory(BackupDirectory);
 
         DatabasePath = Path.Combine(DataDirectory, "wrenchdesk.db");
+        // Each connection keeps its own cache. Shared cache sounds like the thriftier choice and
+        // is the wrong one here: it swaps SQLite's row-level locking for table-level locking
+        // between connections in this process, and a clash then surfaces as SQLITE_LOCKED, which
+        // busy_timeout below does not retry — it only waits out SQLITE_BUSY. With the shop PC,
+        // a tablet at the bench and the house PC all writing through the same program, that is a
+        // save failing in front of a customer. WAL plus a busy timeout handles the concurrency
+        // on its own.
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
             Pooling = true
         }.ToString();
     }

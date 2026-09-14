@@ -23,6 +23,15 @@ var port = builder.Configuration.GetValue("WrenchDesk:Port", 5173);
 var lanEnabled = builder.Configuration.GetValue("WrenchDesk:AllowLanAccess", true);
 builder.WebHost.UseUrls($"http://{(lanEnabled ? "0.0.0.0" : "127.0.0.1")}:{port}");
 
+// A second copy cannot serve the same port, and the shop has no way to tell that a program in
+// the notification area is already running. Hand the click to the copy that is already up
+// rather than starting one that is about to fail on the bind.
+if (OperatingSystem.IsWindows() && !SingleInstance.TryClaim(port))
+{
+    SingleInstance.HandOver($"http://localhost:{port}");
+    return;
+}
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

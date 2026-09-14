@@ -139,16 +139,24 @@ public class TicketRepo
     }
 
     /// <summary>
-    /// Creates a ticket, allocating the next number inside the same transaction so two
-    /// browser tabs writing at once cannot land on the same number.
+    /// Creates a ticket, allocating the next number under the write lock so two browser tabs
+    /// writing at once cannot land on the same number.
+    ///
+    /// The transaction is IMMEDIATE rather than the default deferred one, and that is the whole
+    /// point of it. A deferred transaction takes no lock until its first write, so two of these
+    /// could both read the same highest number before either inserted; the unique index on
+    /// number would then catch the collision, but as an exception in the middle of writing up a
+    /// customer's machine. Taking the lock at the start makes the second one wait its turn.
     /// </summary>
     public long Create(Ticket t)
     {
-        using var conn = _db.Open();
-        using var tx = conn.BeginTransaction();
-
+        // Read before opening the transaction: this reaches for a connection of its own, and a
+        // second connection used inside a held write lock is how a deadlock gets built.
         var prefix = _settings.Get(SettingsStore.TicketPrefix);
         if (string.IsNullOrWhiteSpace(prefix)) prefix = "WSE";
+
+        using var conn = _db.Open();
+        using var tx = conn.BeginTransaction(deferred: false);
 
         // Highest numeric suffix already used with this prefix, so numbering survives edits and deletes.
         var highest = conn.ExecuteScalar<long?>("""
