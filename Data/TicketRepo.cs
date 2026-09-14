@@ -275,7 +275,8 @@ public class TicketRepo
     public void RemoveMachine(long machineId)
     {
         using var conn = _db.Open();
-        using var tx = conn.BeginTransaction();
+        // Reads the row then writes from what it read, so the write lock is taken up front.
+        using var tx = conn.BeginTransaction(deferred: false);
 
         var row = conn.QuerySingleOrDefault<TicketEquipment>(
             "SELECT * FROM ticket_equipment WHERE id = @machineId;", new { machineId }, tx);

@@ -1106,6 +1106,10 @@
             "denied" => (DeniedExplanation, "alert-danger"),
             "notconfigured" => ("Save your client ID and secret first.", "alert-warn"),
             "nocode" => ("Google did not send an authorisation code back. Try connecting again.", "alert-danger"),
+            // Almost always an expired or reused attempt - a stale tab, or Connect pressed twice.
+            "badstate" => ("That sign-in did not match the one this PC started, so it was not "
+                         + "accepted. Press Connect Google account again and finish it in the "
+                         + "window that opens.", "alert-warn"),
             "failed" => ($"Could not finish connecting: {GoogleOutcomeDetail}", "alert-danger"),
             _ => (null, "alert-ok")
         };

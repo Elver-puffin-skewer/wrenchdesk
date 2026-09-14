@@ -89,6 +89,16 @@ public class Db
         conn.Open();
         // WAL survives an unclean shutdown far better, which matters on a shop PC that just gets switched off.
         conn.Execute("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+
+        // Phone numbers are typed however the person at the counter felt like typing them, so
+        // comparing them means comparing the digits alone. Doing that here rather than in C#
+        // lets a query ask for a number directly, instead of reading every customer out and
+        // sifting them in memory.
+        conn.CreateFunction(
+            "digits_only",
+            (string? value) => new string((value ?? "").Where(char.IsDigit).ToArray()),
+            isDeterministic: true);
+
         return conn;
     }
 
@@ -410,6 +420,14 @@ public class SettingsStore
     public const string GoogleSyncEnabled = "google.sync_enabled";
     public const string GoogleSyncIntervalMin = "google.sync_interval_min";
 
+    /// <summary>
+    /// A one-shot random value sent out with the consent request and required back on the
+    /// callback. It is what proves the browser arriving with an authorisation code is the one
+    /// this shop sent to Google, rather than something else on the wifi handing us a code.
+    /// Cleared the moment it is used.
+    /// </summary>
+    public const string GoogleOAuthState = "google.oauth_state";
+
     // Written by the sync, not by the settings screen.
     public const string GoogleTokenJson = "google.token_json";
     public const string GoogleSyncToken = "google.sync_token";
@@ -450,6 +468,7 @@ public class SettingsStore
         [GoogleCalendarName] = "",
         [GoogleSyncEnabled] = "false",
         [GoogleSyncIntervalMin] = "5",
+        [GoogleOAuthState] = "",
         [GoogleTokenJson] = "",
         [GoogleSyncToken] = "",
         [GoogleLastSync] = "",

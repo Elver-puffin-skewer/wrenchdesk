@@ -127,14 +127,21 @@ app.MapGet("/google/connect", (HttpRequest request, GoogleAuthService auth) =>
     if (!auth.IsConfigured)
         return Results.Redirect("/settings?google=notconfigured");
 
-    return Results.Redirect(auth.BuildAuthorizationUrl(GoogleRedirectUri(request)));
+    return Results.Redirect(auth.BeginAuthorization(GoogleRedirectUri(request)));
 });
 
 app.MapGet("/google/callback", async (HttpRequest request, GoogleAuthService auth,
-    string? code, string? error, CancellationToken ct) =>
+    string? code, string? state, string? error, CancellationToken ct) =>
 {
+    // Checked before anything else, and always consumed, so an attempt that got this far cannot
+    // be replayed. Google returns the state alongside an error too, hence checking it first.
+    var stateOk = auth.ConsumeAuthorizationState(state);
+
     if (!string.IsNullOrWhiteSpace(error))
         return Results.Redirect($"/settings?google=denied&detail={Uri.EscapeDataString(error)}");
+
+    if (!stateOk)
+        return Results.Redirect("/settings?google=badstate");
 
     if (string.IsNullOrWhiteSpace(code))
         return Results.Redirect("/settings?google=nocode");

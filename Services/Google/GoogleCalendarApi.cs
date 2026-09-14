@@ -164,10 +164,15 @@ public class GoogleAuthService
     /// The consent URL to send the browser to. "offline" plus "consent" is what produces a refresh
     /// token — without it the connection would die as soon as the first hour was up.
     /// </summary>
-    public string BuildAuthorizationUrl(string redirectUri)
+    private string BuildAuthorizationUrl(string redirectUri, string state)
     {
         var flow = CreateFlow();
         var request = flow.CreateAuthorizationCodeRequest(redirectUri);
+
+        // Google hands this back untouched on the callback, where it is checked against what we
+        // stored. Without it the callback would take an authorisation code from anyone who could
+        // reach it, which on a shop wifi is everyone.
+        request.State = state;
 
         if (request is GoogleAuthorizationCodeRequestUrl google)
         {
@@ -176,6 +181,32 @@ public class GoogleAuthService
         }
 
         return request.Build().ToString();
+    }
+
+    /// <summary>Starts a sign-in: mints the one-shot state, stores it, and returns the URL to send the browser to.</summary>
+    public string BeginAuthorization(string redirectUri)
+    {
+        var state = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+        _settings.Set(SettingsStore.GoogleOAuthState, state);
+        return BuildAuthorizationUrl(redirectUri, state);
+    }
+
+    /// <summary>
+    /// True when the callback carries the value we sent out. Consumed either way, so a state is
+    /// never good for a second callback, and a failed attempt cannot be retried by replaying it.
+    /// </summary>
+    public bool ConsumeAuthorizationState(string? state)
+    {
+        var expected = _settings.Get(SettingsStore.GoogleOAuthState);
+        _settings.Set(SettingsStore.GoogleOAuthState, "");
+
+        if (string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(state)) return false;
+
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(expected),
+            System.Text.Encoding.UTF8.GetBytes(state));
     }
 
     public async Task ExchangeCodeAsync(string code, string redirectUri, CancellationToken ct = default)

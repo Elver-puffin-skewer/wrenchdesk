@@ -11,6 +11,15 @@ public class CustomerRepo
 
     private static string NowUtc() => DateTime.UtcNow.ToString("O");
 
+    private const string PhoneMatchSql = @"
+            SELECT * FROM customers
+            WHERE is_archived = 0
+              AND (
+                   (LENGTH(digits_only(phone))     >= 10 AND SUBSTR(digits_only(phone),     -10) = @last10)
+                OR (LENGTH(digits_only(phone_alt)) >= 10 AND SUBSTR(digits_only(phone_alt), -10) = @last10)
+              )
+            LIMIT 2;";
+
     public List<Customer> Search(string? term, bool includeArchived = false)
     {
         using var conn = _db.Open();
@@ -243,22 +252,21 @@ public class CustomerRepo
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
 
-        var candidates = Search(null);
-        if (candidates.Count == 0) return null;
-
         foreach (var digits in PhoneNumbersIn(text))
         {
-            var byPhone = candidates
-                .Where(c => SamePhone(c.Phone, digits) || SamePhone(c.PhoneAlt, digits))
-                .ToList();
-
+            var byPhone = FindByPhone(digits);
             if (byPhone.Count == 1) return byPhone[0];
         }
 
         // No usable number: fall back to a whole-name match, which has to be unambiguous.
         var haystack = Normalise(text);
+        if (haystack.Length == 0) return null;
 
-        var byName = candidates
+        // Asking "does this entry mention you" has to be put to every customer, so this one
+        // reads them all - but only the four fields the question needs, and with no ceiling on
+        // how many. It used to borrow the search, whose LIMIT 500 quietly stopped matching
+        // altogether for whoever sorted last once the books grew past that.
+        var byName = NameCandidates()
             .Where(c =>
             {
                 var full = Normalise($"{c.FirstName} {c.LastName}");
@@ -267,9 +275,32 @@ public class CustomerRepo
                 return (full.Length >= 5 && haystack.Contains(full))
                     || (business.Length >= 4 && haystack.Contains(business));
             })
+            .Take(2)
             .ToList();
 
-        return byName.Count == 1 ? byName[0] : null;
+        return byName.Count == 1 ? Get(byName[0].Id) : null;
+    }
+
+    /// <summary>Just enough of a customer to tell whether a calendar entry is naming them.</summary>
+    private record NameCandidate(long Id, string FirstName, string LastName, string BusinessName);
+
+    private List<NameCandidate> NameCandidates()
+    {
+        using var conn = _db.Open();
+        return conn.Query<NameCandidate>(
+            "SELECT id, first_name, last_name, business_name FROM customers WHERE is_archived = 0;")
+            .ToList();
+    }
+
+    /// <summary>
+    /// Customers reachable on a number, compared on the last ten digits so 256-555-0142 and
+    /// (256) 555 0142 are the same number. Stops at two: the caller only needs to know whether
+    /// exactly one person fits.
+    /// </summary>
+    private List<Customer> FindByPhone(string digits)
+    {
+        using var conn = _db.Open();
+        return conn.Query<Customer>(PhoneMatchSql, new { last10 = digits[^10..] }).ToList();
     }
 
     /// <summary>Runs of 10 or 11 digits in the text, which is what a US phone number looks like once punctuation is stripped.</summary>
@@ -281,17 +312,6 @@ public class CustomerRepo
             var digits = new string(m.Value.Where(char.IsDigit).ToArray());
             if (digits.Length is >= 10 and <= 11) yield return digits;
         }
-    }
-
-    /// <summary>Compares on the last ten digits, so 256-555-0142 and (256) 555 0142 are the same number.</summary>
-    private static bool SamePhone(string? stored, string digits)
-    {
-        if (string.IsNullOrWhiteSpace(stored)) return false;
-
-        var storedDigits = new string(stored.Where(char.IsDigit).ToArray());
-        if (storedDigits.Length < 10) return false;
-
-        return storedDigits[^10..] == digits[^10..];
     }
 
     private static string Normalise(string? value) =>

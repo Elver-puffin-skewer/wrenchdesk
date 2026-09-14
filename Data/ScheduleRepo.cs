@@ -124,7 +124,8 @@ public class ScheduleRepo
     public void Delete(long id)
     {
         using var conn = _db.Open();
-        using var tx = conn.BeginTransaction();
+        // Whether a tombstone is needed depends on the row read here, so take the lock first.
+        using var tx = conn.BeginTransaction(deferred: false);
 
         var googleEventId = conn.ExecuteScalar<string?>(
             "SELECT google_event_id FROM appointments WHERE id = @id;", new { id }, tx);

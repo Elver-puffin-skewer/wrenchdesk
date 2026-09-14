@@ -72,7 +72,8 @@ public class QuickItemRepo
     public void Move(long id, bool up)
     {
         using var conn = _db.Open();
-        using var tx = conn.BeginTransaction();
+        // The new order is worked out from the order just read, so nothing may move in between.
+        using var tx = conn.BeginTransaction(deferred: false);
 
         var items = conn.Query<QuickItem>(
             "SELECT * FROM quick_items ORDER BY sort_order, id;", transaction: tx).ToList();
