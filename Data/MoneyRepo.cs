@@ -218,9 +218,29 @@ public class MoneyRepo
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Characters a spreadsheet reads as the start of a formula rather than as text.
+    /// The last two are tab and carriage return, which do the same thing.
+    /// </summary>
+    private static readonly char[] FormulaStarters = { '=', '+', '-', '@', (char)9, (char)13 };
+
+    /// <summary>
+    /// One field of the export.
+    ///
+    /// Excel and Google Sheets treat a cell beginning = + - or @ as a formula, and this file is
+    /// written to be opened in exactly those. References and notes are free text typed at the
+    /// counter, and anyone who can reach WrenchDesk on the shop wifi can type them, so anything
+    /// that would be run rather than read gets a leading apostrophe. The cost is that a note
+    /// genuinely starting with a dash shows that apostrophe in the spreadsheet; a bookkeeper
+    /// seeing a stray mark beats one opening a file that does something.
+    /// </summary>
     private static string Csv(string? value)
     {
         value ??= "";
+
+        if (value.Length > 0 && FormulaStarters.Contains(value[0]))
+            value = "'" + value;
+
         return value.Contains(',') || value.Contains('"') || value.Contains('\n')
             ? $"\"{value.Replace("\"", "\"\"")}\""
             : value;

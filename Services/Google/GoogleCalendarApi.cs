@@ -72,6 +72,23 @@ public class GoogleAuthService
 
     public GoogleAuthService(SettingsStore settings) => _settings = settings;
 
+    /// <summary>True when a client secret is on file, without handing the secret itself out.</summary>
+    public bool HasClientSecret => !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleClientSecret));
+
+    /// <summary>
+    /// What to store for the client secret when the Settings screen is saved.
+    ///
+    /// The screen no longer loads the saved secret into the box - a Blazor Server page renders
+    /// its field values into the HTML it sends, so a password box holding the secret would show
+    /// it to anyone on the shop wifi who opened Settings and looked. An empty box therefore
+    /// means "leave it alone", not "clear it": saving this page after changing the labour rate
+    /// must not quietly disconnect the calendar.
+    /// </summary>
+    public string ResolveClientSecret(string? typed) =>
+        string.IsNullOrWhiteSpace(typed)
+            ? _settings.Get(SettingsStore.GoogleClientSecret)
+            : typed.Trim();
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleClientId)) &&
         !string.IsNullOrWhiteSpace(_settings.Get(SettingsStore.GoogleClientSecret));

@@ -568,7 +568,15 @@
                 </div>
                 <div class="field">
                     <label>Client secret</label>
-                    <input type="password" @bind="_googleClientSecret" placeholder="GOCSPX-…" />
+                    <input type="password" @bind="_googleClientSecret"
+                           placeholder="@(_hasClientSecret ? "Saved - leave blank to keep it" : "GOCSPX-…")" />
+                    @if (_hasClientSecret)
+                    {
+                        <div class="muted small" style="margin-top:.2rem">
+                            A secret is saved. It is not shown here and is not sent to this page —
+                            leave the box empty unless you are replacing it.
+                        </div>
+                    }
                 </div>
                 <div class="field span-2">
                     <div class="muted small">
@@ -1049,6 +1057,7 @@
 
     private string _googleClientId = "";
     private string _googleClientSecret = "";
+    private bool _hasClientSecret;
     private string _calendarId = "";
     private int _syncIntervalMin = 5;
     private DateTime? _lastSync;
@@ -1074,7 +1083,11 @@
         _syncEnabled = Settings.GetBool(SettingsStore.GoogleSyncEnabled);
 
         _googleClientId = Settings.Get(SettingsStore.GoogleClientId);
-        _googleClientSecret = Settings.Get(SettingsStore.GoogleClientSecret);
+
+        // Deliberately not loaded. Whatever sits in a field here is rendered into the page sent
+        // to the browser, and any phone on the shop wifi can open this screen.
+        _googleClientSecret = "";
+        _hasClientSecret = Auth.HasClientSecret;
         _calendarId = Settings.Get(SettingsStore.GoogleCalendarId);
 
         var interval = Settings.GetInt(SettingsStore.GoogleSyncIntervalMin);
@@ -1225,9 +1238,12 @@
         Settings.SetAll(new Dictionary<string, string>
         {
             [SettingsStore.GoogleClientId] = _googleClientId.Trim(),
-            [SettingsStore.GoogleClientSecret] = _googleClientSecret.Trim()
+            // Blank means the box was left alone, which has to keep the saved secret rather
+            // than wipe it - the screen never had it to give back.
+            [SettingsStore.GoogleClientSecret] = Auth.ResolveClientSecret(_googleClientSecret)
         });
 
+        _googleClientSecret = "";
         _googleFlash = "Credentials saved. Now press Connect Google account.";
         _googleFlashClass = "alert-ok";
         LoadGoogle();
