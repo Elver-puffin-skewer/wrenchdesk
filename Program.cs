@@ -28,7 +28,8 @@ builder.WebHost.UseUrls($"http://{(lanEnabled ? "0.0.0.0" : "127.0.0.1")}:{port}
 // rather than starting one that is about to fail on the bind.
 if (OperatingSystem.IsWindows() && !SingleInstance.TryClaim(port))
 {
-    SingleInstance.HandOver($"http://localhost:{port}");
+    SingleInstance.HandOver($"http://localhost:{port}",
+        builder.Configuration.GetValue("WrenchDesk:OpenBrowser", true));
     return;
 }
 
@@ -51,8 +52,27 @@ builder.Services.AddHostedService<CalendarSyncBackgroundService>();
 
 var app = builder.Build();
 
-// Bring the schema up to date before anything can serve a request.
-app.Services.GetRequiredService<Db>().Migrate();
+// Bring the schema up to date before anything can serve a request. An update that changes the
+// shape of the records copies them first; if that copy cannot be written the update does not go
+// ahead, and the shop gets a sentence they can act on rather than a crash with no window.
+try
+{
+    app.Services.GetRequiredService<Db>().Migrate();
+}
+catch (SchemaUpgradeBlockedException ex)
+{
+    if (OperatingSystem.IsWindows())
+    {
+        System.Windows.Forms.MessageBox.Show(ex.Message, "WrenchDesk could not start",
+            System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Warning);
+    }
+    else
+    {
+        Console.Error.WriteLine(ex.Message);
+    }
+
+    return;
+}
 
 if (!app.Environment.IsDevelopment())
 {

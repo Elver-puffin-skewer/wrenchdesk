@@ -62,12 +62,19 @@ public static class SingleInstance
     /// Does what the person who double-clicked the icon meant: puts the shop screen back in
     /// front of them, using the copy that is already running.
     ///
-    /// This opens the browser even where OpenBrowser is switched off. That setting is about a
-    /// program starting itself up unattended; this is somebody asking for the screen just now.
+    /// A shop that has switched OpenBrowser off has said it does not want this program opening
+    /// browser windows, and that answer holds whoever started it. They are told where it went
+    /// instead, so the click still does something they can see.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static void HandOver(string url)
+    public static void HandOver(string url, bool openBrowser = true)
     {
+        if (!openBrowser)
+        {
+            SayWhereItWent();
+            return;
+        }
+
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
@@ -76,12 +83,16 @@ public static class SingleInstance
         {
             // No browser to open means the click produced nothing at all, which is the very
             // thing this class exists to avoid. Say where the program went instead.
-            MessageBox.Show(
-                "WrenchDesk is already running." + Environment.NewLine + Environment.NewLine
-              + "It sits down by the clock, in the notification area. Click the small arrow "
-              + "next to the clock if you cannot see its icon, then double-click it to open "
-              + "the shop screen.",
-                "WrenchDesk", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            SayWhereItWent();
         }
     }
+
+    [SupportedOSPlatform("windows")]
+    private static void SayWhereItWent() =>
+        MessageBox.Show(
+            "WrenchDesk is already running." + Environment.NewLine + Environment.NewLine
+          + "It sits down by the clock, in the notification area. Click the small arrow "
+          + "next to the clock if you cannot see its icon, then double-click it to open "
+          + "the shop screen.",
+            "WrenchDesk", MessageBoxButtons.OK, MessageBoxIcon.Information);
 }

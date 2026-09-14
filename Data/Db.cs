@@ -112,19 +112,88 @@ public class Db
         return conn;
     }
 
+    /// <summary>
+    /// The copy taken of a shop's records before the schema is moved forward. Deliberately not
+    /// named wrenchdesk-*.db, which is the pattern backup retention prunes - this one is meant to
+    /// outlive every rolling backup, because it is the only copy of the shape the records were in
+    /// before an update changed them.
+    /// </summary>
+    public const string PreUpgradePrefix = "before-upgrade-";
+
     /// <summary>Applies any migrations the file has not seen yet. Safe to call on every startup.</summary>
-    public void Migrate()
+    public void Migrate() => MigrateTo(Migrations.Length);
+
+    /// <summary>
+    /// Steps the schema up to a particular version rather than all the way.
+    ///
+    /// Startup always asks for the latest. Taking a target is what lets a test build a database
+    /// the shape an older release left behind, and then put this version in front of it - which
+    /// is the only way to check an upgrade does what it should without keeping a museum of old
+    /// database files in the repository.
+    /// </summary>
+    public void MigrateTo(int targetVersion)
     {
+        targetVersion = Math.Clamp(targetVersion, 0, Migrations.Length);
+
         using var conn = Open();
         var version = conn.ExecuteScalar<long>("PRAGMA user_version;");
 
-        for (var next = (int)version; next < Migrations.Length; next++)
+        if (version >= targetVersion) return;
+
+        // Version 0 is a database that does not exist yet - there is nothing to lose, and no
+        // point writing an empty copy every time a new shop starts up.
+        if (version > 0) SafetyCopy(conn, (int)version);
+
+        for (var next = (int)version; next < targetVersion; next++)
         {
             using var tx = conn.BeginTransaction();
             conn.Execute(Migrations[next], transaction: tx);
             // PRAGMA will not take a parameter, and the value is a loop counter, not user input.
             conn.Execute($"PRAGMA user_version={next + 1};", transaction: tx);
             tx.Commit();
+        }
+    }
+
+    /// <summary>The schema version this build knows how to produce.</summary>
+    public static int LatestSchemaVersion => Migrations.Length;
+
+    /// <summary>
+    /// Copies the records before an update changes their shape.
+    ///
+    /// A schema change cannot be undone, and it happens on the day the shop downloads a new
+    /// version - which is exactly the day nobody thought to take a backup first. This makes that
+    /// decision for them. It runs once per upgrade, never on an ordinary start.
+    ///
+    /// A failure here stops the upgrade on purpose. Going ahead would mean changing the shop's
+    /// only copy of its records with nothing to go back to, and the alternative - they keep
+    /// working on the version they already had - is a far better bad day.
+    /// </summary>
+    private void SafetyCopy(SqliteConnection conn, int fromVersion)
+    {
+        var path = Path.Combine(
+            BackupDirectory,
+            $"{PreUpgradePrefix}v{fromVersion}-{DateTime.Now:yyyy-MM-dd-HHmmss}.db");
+
+        try
+        {
+            Directory.CreateDirectory(BackupDirectory);
+
+            // Same method the backup button uses: a complete, working database, safe to take
+            // while the file is open, and restorable by renaming it into place.
+            conn.Execute("VACUUM INTO @path;", new { path });
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception)
+            {
+                // Nothing useful to do about a half-written copy we are already abandoning.
+            }
+
+            throw new SchemaUpgradeBlockedException(path, ex);
         }
     }
 
@@ -409,6 +478,28 @@ public class Db
         CREATE INDEX ix_photos_ticket ON photos(ticket_id, id);
         """
     };
+}
+
+/// <summary>
+/// Thrown when the records could not be copied before an update was going to change their shape.
+/// The update does not go ahead; the message is written to be read by whoever is standing at the
+/// shop PC wondering why it will not start.
+/// </summary>
+public class SchemaUpgradeBlockedException : Exception
+{
+    private static readonly string Gap = Environment.NewLine + Environment.NewLine;
+
+    public SchemaUpgradeBlockedException(string attemptedPath, Exception inner)
+        : base("WrenchDesk needs to update how your records are stored, and it makes a copy of "
+             + "them first in case anything goes wrong." + Gap
+             + "That copy could not be written to:" + Environment.NewLine + attemptedPath + Gap
+             + "The reason given was: " + inner.Message + Gap
+             + "Nothing has been changed. The usual cause is a full disk. Free some space and "
+             + "start WrenchDesk again." + Gap
+             + "Your records are untouched, and the version you had before this update still "
+             + "opens them.", inner)
+    {
+    }
 }
 
 /// <summary>Shop-wide preferences, stored as key/value so adding one never needs a migration.</summary>

@@ -112,6 +112,23 @@ It installs under your own user account, so there is **no administrator prompt**
 Download the new `WrenchDesk.exe` and run it again. Your customers, tickets and payments live in
 `Documents\WrenchDesk` and are never touched by an update.
 
+Occasionally a new version needs to change *how* the records are stored — a new column for
+something it can do that the old one could not. When that happens it **copies your records first**,
+before changing anything, to:
+
+```
+Documents\WrenchDesk\Backupsefore-upgrade-v5-2026-09-14-181500.db
+```
+
+That copy is a complete working database, and it is never removed by the backup retention setting —
+it is meant to outlive the rolling backups, because it is the only copy of the shape your records
+were in before the update. Rename it to `wrenchdesk.db` and put it back to undo an update entirely.
+
+If that copy cannot be written — a full disk, most likely — **the update does not go ahead**.
+WrenchDesk says so and stops, your records are left exactly as they were, and the version you had
+before still opens them. That is deliberate: changing the only copy of a shop's records with
+nothing to go back to is not a risk worth taking to save a restart.
+
 ### Removing it
 
 ```
@@ -244,7 +261,7 @@ want one. To change a setting, create `appsettings.json` next to `WrenchDesk.exe
 | --- | --- |
 | `Port` | Which port to serve on. Change it if something else on the PC already uses 5173. |
 | `AllowLanAccess` | `false` locks it to the shop PC only — no phone or tablet access. |
-| `OpenBrowser` | `false` stops it opening a browser window on startup. |
+| `OpenBrowser` | `false` stops it opening a browser window — on startup, and when the icon is double-clicked while it is already running. It says where to find it in the notification area instead. |
 | `ShowTrayIcon` | `false` runs with no tray icon at all. Only sensible for an unattended PC. |
 | `DataDirectory` | Where the database and backups live. Blank means `Documents\WrenchDesk`. |
 

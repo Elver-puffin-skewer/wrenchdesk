@@ -19,7 +19,7 @@
     <Product>WrenchDesk</Product>
     <Company>Walt's Small Engines</Company>
     <Description>Shop management for Walt's Small Engines</Description>
-    <Version>1.9.0</Version>
+    <Version>2.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
