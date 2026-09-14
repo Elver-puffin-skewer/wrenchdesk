@@ -1,0 +1,175 @@
+@page "/parts"
+@inject TicketRepo Tickets
+@inject NavigationManager Nav
+
+<PageTitle>Parts on order — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Parts on order</h1>
+        <p class="sub">What the shop is waiting on, oldest first.</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+        <button class="btn" onclick="window.print()">🖨 Print this list</button>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="alert alert-ok">@_flash</div>
+}
+
+<div class="grid cols-4" style="margin-bottom:1.25rem">
+    <div class="stat @(_late.Count > 0 ? "owed" : "")">
+        <div class="label">Late</div>
+        <div class="value">@_late.Count</div>
+        <div class="foot">past the day promised</div>
+    </div>
+    <div class="stat">
+        <div class="label">On order</div>
+        <div class="value">@_rows.Count</div>
+        <div class="foot">across @_rows.Select(r => r.TicketId).Distinct().Count() ticket(s)</div>
+    </div>
+    <div class="stat">
+        <div class="label">No date given</div>
+        <div class="value">@_rows.Count(r => r.NoDatePromised)</div>
+        <div class="foot">nobody said when</div>
+    </div>
+    <div class="stat @(_stalled.Count > 0 ? "owed" : "")">
+        <div class="label">Waiting on parts, nothing ordered</div>
+        <div class="value">@_stalled.Count</div>
+        <div class="foot">ticket(s) with no part on order</div>
+    </div>
+</div>
+
+@if (_rows.Count == 0)
+{
+    <div class="card">
+        <div class="empty">
+            <div class="big">📦</div>
+            <div>Nothing on order.</div>
+            <div class="muted small">
+                Mark a part as ordered on a ticket — under the part line — and it shows up here.
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-head"><h2>On order</h2></div>
+        <div class="card-body table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Waiting</th>
+                        <th>Part</th>
+                        <th>From</th>
+                        <th>Due</th>
+                        <th>Ticket</th>
+                        <th>Customer / machine</th>
+                        <th>Where it is</th>
+                        <th class="shrink no-print"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        var r = row;
+                        <tr class="@(r.IsOverdue ? "row-late" : "")">
+                            <td class="tnum">
+                                <strong>@r.DaysWaiting</strong>
+                                <span class="muted small">day@(r.DaysWaiting == 1 ? "" : "s")</span>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(r.Description) ? "(part not named)" : r.Description)</td>
+                            <td>@(string.IsNullOrWhiteSpace(r.Supplier) ? "—" : r.Supplier)</td>
+                            <td>
+                                @if (r.NoDatePromised)
+                                {
+                                    <span class="muted">not said</span>
+                                }
+                                else if (r.IsOverdue)
+                                {
+                                    <span class="money-owed"><strong>@r.ExpectedOn</strong></span>
+                                }
+                                else
+                                {
+                                    @r.ExpectedOn
+                                }
+                            </td>
+                            <td><a href="@($"/tickets/{r.TicketId}")">@r.TicketNumber</a></td>
+                            <td>
+                                @r.CustomerName
+                                @if (!string.IsNullOrWhiteSpace(r.EquipmentName))
+                                {
+                                    <div class="muted small">@r.EquipmentName</div>
+                                }
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(r.Location) ? "—" : r.Location)</td>
+                            <td class="shrink no-print">
+                                <button class="btn btn-sm" @onclick="() => MarkArrived(r)">It's here</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (_stalled.Count > 0)
+{
+    <div class="card" style="margin-top:1.25rem">
+        <div class="card-head"><h2>Waiting on parts, but nothing is on order</h2></div>
+        <div class="card-body">
+            <div class="muted small" style="margin-bottom:.6rem">
+                These tickets say they are waiting on parts, and no part on them has been marked as
+                ordered. Usually it means somebody meant to ring the supplier and the day got away.
+            </div>
+            <ul class="plain-list">
+                @foreach (var t in _stalled)
+                {
+                    <li>
+                        <a href="@($"/tickets/{t.Id}")">@t.Number</a>
+                        — @t.CustomerName
+                        @if (!string.IsNullOrWhiteSpace(t.EquipmentName))
+                        {
+                            <span class="muted">· @t.EquipmentName</span>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PartOnOrderRow> _rows = new();
+    private List<PartOnOrderRow> _late = new();
+    private List<TicketRow> _stalled = new();
+    private string? _flash;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        _rows = Tickets.PartsOnOrder();
+        _late = _rows.Where(r => r.IsOverdue).ToList();
+
+        // A ticket parked on Waiting on Parts with nothing on order is the quiet failure this
+        // page exists to catch: the machine is blocked and nobody has actually ordered anything.
+        var onOrderTickets = _rows.Select(r => r.TicketId).ToHashSet();
+        _stalled = Tickets.Search(null, TicketStatus.WaitingParts, openOnly: false)
+            .Where(t => !onOrderTickets.Contains(t.Id))
+            .ToList();
+    }
+
+    private void MarkArrived(PartOnOrderRow row)
+    {
+        Tickets.MarkPartArrived(row.LineId);
+        _flash = $"{(string.IsNullOrWhiteSpace(row.Description) ? "Part" : row.Description)} marked as here "
+               + $"on {row.TicketNumber}.";
+        Load();
+    }
+}

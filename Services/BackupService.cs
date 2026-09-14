@@ -6,6 +6,15 @@ namespace WrenchDesk.Services;
 /// <summary>Outcome of one backup attempt. Failures are reported, never thrown at the UI.</summary>
 public record BackupResult(bool Success, string? Path, string? Error, long Bytes)
 {
+    /// <summary>How many photo files were copied alongside the database this time.</summary>
+    public int PhotosCopied { get; init; }
+
+    /// <summary>
+    /// Set when the database was written but a photo could not be. The backup still counts as
+    /// done - the records are the part that matters - but the shop should be told.
+    /// </summary>
+    public string? PhotoWarning { get; init; }
+
     public static BackupResult Failed(string error) => new(false, null, error, 0);
     public static BackupResult Ok(string path, long bytes) => new(true, path, null, bytes);
 }
@@ -111,7 +120,7 @@ public class BackupService
                 if (!drive.IsReady)
                     return $"Drive {root} is not available. Is the drive plugged in?";
 
-                var needed = CurrentDatabaseBytes() + (10 * 1024 * 1024);
+                var needed = CurrentDatabaseBytes() + CurrentPhotoBytes() + (10 * 1024 * 1024);
                 if (drive.AvailableFreeSpace < needed)
                     return $"Not enough room on {root} — needs about {DriveOption.FormatSize(needed)}, "
                          + $"only {DriveOption.FormatSize(drive.AvailableFreeSpace)} free.";
@@ -174,9 +183,17 @@ public class BackupService
         var bytes = new FileInfo(path).Length;
         _log.LogInformation("Backup written to {Path} ({Bytes} bytes)", path, bytes);
 
+        // Photos live beside the database rather than inside it, so a copy of the database on its
+        // own is not a copy of the shop. They go next to the backup in a Photos folder.
+        var (photosCopied, photoWarning) = MirrorPhotos(full);
+
         if (applyRetention) Prune(full, justWritten: path);
 
-        return BackupResult.Ok(path, bytes);
+        return BackupResult.Ok(path, bytes) with
+        {
+            PhotosCopied = photosCopied,
+            PhotoWarning = photoWarning
+        };
     }
 
     /// <summary>
@@ -215,11 +232,15 @@ public class BackupService
         {
             // Only a success advances the clock, so a failed run is retried on the next tick
             // rather than being silently skipped until tomorrow.
+            var photos = result.PhotosCopied > 0
+                ? $" (+{result.PhotosCopied} photo{(result.PhotosCopied == 1 ? "" : "s")})"
+                : "";
+
             var summary = second is { Success: true }
-                ? $"Saved to {result.Path} and {second.Path}"
+                ? $"Saved to {result.Path} and {second.Path}{photos}"
                 : second is not null
-                    ? $"Saved to {result.Path}. Second copy failed: {second.Error}"
-                    : $"Saved to {result.Path}";
+                    ? $"Saved to {result.Path}{photos}. Second copy failed: {second.Error}"
+                    : $"Saved to {result.Path}{photos}";
 
             _settings.SetAll(new Dictionary<string, string>
             {
@@ -296,6 +317,94 @@ public class BackupService
 
     public long CurrentDatabaseBytes() =>
         File.Exists(_db.DatabasePath) ? new FileInfo(_db.DatabasePath).Length : 0;
+
+    /// <summary>Total size of the photo files, which a destination has to have room for too.</summary>
+    public long CurrentPhotoBytes()
+    {
+        try
+        {
+            return Directory.Exists(_db.PhotoDirectory)
+                ? new DirectoryInfo(_db.PhotoDirectory).GetFiles().Sum(f => f.Length)
+                : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    public int CurrentPhotoCount()
+    {
+        try
+        {
+            return Directory.Exists(_db.PhotoDirectory)
+                ? new DirectoryInfo(_db.PhotoDirectory).GetFiles().Length
+                : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Copies photo files next to the backup, into a Photos folder.
+    ///
+    /// Files already there with the same size are left alone, so backing up daily to the same
+    /// stick copies only what is new rather than the whole shop's photos every night. Nothing is
+    /// ever deleted from the copy: a photo removed from a ticket by mistake is then still
+    /// recoverable from the stick, which is the entire point of a backup.
+    /// </summary>
+    private (int Copied, string? Warning) MirrorPhotos(string destinationDirectory)
+    {
+        if (!Directory.Exists(_db.PhotoDirectory)) return (0, null);
+
+        FileInfo[] sources;
+        try
+        {
+            sources = new DirectoryInfo(_db.PhotoDirectory).GetFiles();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (0, $"Could not read the photos folder: {ex.Message}");
+        }
+
+        if (sources.Length == 0) return (0, null);
+
+        var target = Path.Combine(destinationDirectory, "Photos");
+        try
+        {
+            Directory.CreateDirectory(target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (0, $"Could not make a Photos folder at the backup: {ex.Message}");
+        }
+
+        var copied = 0;
+        string? warning = null;
+
+        foreach (var source in sources)
+        {
+            var destination = Path.Combine(target, source.Name);
+
+            try
+            {
+                var existing = new FileInfo(destination);
+                if (existing.Exists && existing.Length == source.Length) continue;
+
+                source.CopyTo(destination, overwrite: true);
+                copied++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning(ex, "Could not copy photo {Name} to {Target}", source.Name, target);
+                warning ??= $"{source.Name} could not be copied: {ex.Message}";
+            }
+        }
+
+        return (copied, warning);
+    }
 
     /// <summary>
     /// Deletes the oldest managed backups beyond the keep count. Only ever touches files matching

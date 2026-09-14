@@ -762,3 +762,133 @@ select { cursor: pointer; }
     font-weight: 700;
     flex: 0 0 auto;
 }
+
+/* ---- Parts on order ---------------------------------------------------- */
+/* The strip under a part line on a ticket, and the board that gathers them all. */
+
+.order-row > td { padding-top: 0; border-top: 0; }
+
+.order-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    align-items: center;
+}
+
+.order-chip {
+    display: inline-block;
+    padding: .12rem .5rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 600;
+    background: var(--cream);
+    border: 1px solid var(--line-2);
+}
+
+.order-chip.late { background: #fdecec; border-color: #e9b4b4; color: var(--red); }
+.order-chip.here { background: #e9f6ec; border-color: #b4d9be; color: #1d6b32; }
+
+tr.row-late td { background: #fdf3f3; }
+
+.banner {
+    display: flex;
+    gap: .6rem;
+    align-items: center;
+    padding: .6rem .9rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--line-2);
+    border-left: 4px solid var(--navy);
+    border-radius: 8px;
+    background: var(--card);
+    color: inherit;
+    text-decoration: none;
+}
+
+.banner:hover { background: var(--cream); }
+.banner-warn { border-left-color: var(--red); }
+.banner-ico { font-size: 1.15rem; }
+
+.plain-list { margin: 0; padding-left: 1.1rem; }
+.plain-list li { margin-bottom: .25rem; }
+
+/* ---- Photos ------------------------------------------------------------ */
+
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: .7rem;
+}
+
+.photo {
+    margin: 0;
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--card);
+}
+
+.photo img {
+    display: block;
+    width: 100%;
+    /* A consistent tile keeps the grid tidy whatever shape the phone took. */
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: var(--cream);
+}
+
+.photo figcaption { padding: .4rem; }
+.photo figcaption input { width: 100%; font-size: .82rem; }
+
+.photo-foot {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    margin-top: .25rem;
+}
+
+/* ---- Machine tag ------------------------------------------------------- */
+/* Read at arm's length across a workshop, so everything here is oversized. */
+
+.tag-sheet {
+    width: 4in;
+    border: 3px solid var(--navy);
+    border-radius: 10px;
+    padding: .5rem .7rem;
+    margin: 0 0 .5rem;
+    background: #fff;
+    color: #000;
+    page-break-inside: avoid;
+}
+
+.tag-top {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    border-bottom: 2px solid var(--navy);
+    padding-bottom: .25rem;
+}
+
+.tag-number { font-size: 1.9rem; font-weight: 800; letter-spacing: .02em; }
+.tag-shop { margin-left: auto; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+.tag-name { font-size: 1.25rem; font-weight: 700; margin-top: .35rem; }
+.tag-phone { font-size: 1.05rem; }
+.tag-machine { font-size: .95rem; margin-top: .3rem; font-weight: 600; }
+.tag-complaint { font-size: .85rem; margin-top: .2rem; font-style: italic; }
+
+.tag-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: .6rem;
+    margin-top: .45rem;
+    border-top: 1px dashed #999;
+    padding-top: .3rem;
+    font-size: .82rem;
+}
+
+.tag-label { text-transform: uppercase; letter-spacing: .06em; font-size: .66rem; color: #555; }
+.tag-value { display: block; font-weight: 600; }
+
+@media print {
+    /* Tags print several to a page and get cut apart. */
+    .tag-sheet { break-inside: avoid; margin-bottom: .35in; }
+}

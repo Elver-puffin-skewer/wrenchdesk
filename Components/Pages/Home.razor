@@ -41,6 +41,27 @@
     </div>
 </div>
 
+@if (_partsOnOrder > 0 || _partsLate > 0)
+{
+    <a class="banner @(_partsLate > 0 ? "banner-warn" : "")" href="/parts">
+        <span class="banner-ico">📦</span>
+        <span>
+            @if (_partsLate > 0)
+            {
+                <strong>@_partsLate part@(_partsLate == 1 ? " is" : "s are") past the day promised.</strong>
+                <span> @_partsOnOrder on order altogether.</span>
+            }
+            else
+            {
+                <strong>@_partsOnOrder part@(_partsOnOrder == 1 ? "" : "s") on order.</strong>
+                <span> Nothing late.</span>
+            }
+        </span>
+        <span class="spacer"></span>
+        <span class="muted small">Open the parts board →</span>
+    </a>
+}
+
 <div class="grid cols-2">
     <div>
         <div class="card">
@@ -168,6 +189,9 @@
     private List<AppointmentRow> _todayAppts = new();
     private List<MoneyBucket> _weeks = new();
 
+    private int _partsOnOrder;
+    private int _partsLate;
+
     protected override void OnInitialized()
     {
         var today = DateTime.Now;
@@ -182,6 +206,10 @@
         _weekRangeLabel = $"{weekFrom:MMM d} – {weekTo:MMM d}";
 
         _outstandingCents = Payments.OutstandingCents();
+
+        var parts = Tickets.PartsOnOrder();
+        _partsOnOrder = parts.Count;
+        _partsLate = parts.Count(p => p.IsOverdue);
 
         _openTickets = Tickets.OpenBoard();
         _readyCount = _openTickets.Count(t => t.Status == TicketStatus.Ready);

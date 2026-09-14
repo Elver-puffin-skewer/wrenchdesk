@@ -1,0 +1,92 @@
+@page "/tickets/{Id:long}/tag"
+@inject TicketRepo Tickets
+@inject CustomerRepo Customers
+@inject SettingsStore Settings
+
+<PageTitle>@(_ticket?.Number ?? "Ticket") — Tag</PageTitle>
+
+@if (_ticket is null)
+{
+    <div class="alert alert-warn">That ticket no longer exists.</div>
+}
+else
+{
+    <div class="btn-row no-print" style="margin-bottom:1rem">
+        <button class="btn btn-primary" onclick="window.print()">🖨 Print the tag@(_machines.Count > 1 ? "s" : "")</button>
+        <a class="btn" href="@($"/tickets/{Id}")">Back to ticket</a>
+        <span class="muted small" style="align-self:center">
+            Cut it out and zip-tie it to the handle. One tag per machine.
+        </span>
+    </div>
+
+    @foreach (var entry in _machines)
+    {
+        var machine = entry;
+
+        <div class="tag-sheet">
+            <div class="tag-top">
+                <div class="tag-number">@_ticket.Number</div>
+                <div class="tag-shop">@_shopName</div>
+            </div>
+
+            <div class="tag-name">@_customerName</div>
+            @if (!string.IsNullOrWhiteSpace(_phone))
+            {
+                <div class="tag-phone">@_phone</div>
+            }
+
+            <div class="tag-machine">@machine.DisplayName</div>
+
+            @if (!string.IsNullOrWhiteSpace(machine.Complaint))
+            {
+                <div class="tag-complaint">@Shorten(machine.Complaint)</div>
+            }
+
+            <div class="tag-foot">
+                <div>
+                    <span class="tag-label">In</span>
+                    <span class="tag-value">@_ticket.IntakeOn</span>
+                </div>
+                <div>
+                    <span class="tag-label">Where</span>
+                    <span class="tag-value">@(string.IsNullOrWhiteSpace(machine.Location) ? "…………………" : machine.Location)</span>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Ticket? _ticket;
+    private List<TicketEquipment> _machines = new();
+    private string _customerName = "";
+    private string _phone = "";
+    private string _shopName = "";
+
+    protected override void OnParametersSet()
+    {
+        _ticket = Tickets.Get(Id);
+        if (_ticket is null) return;
+
+        _machines = Tickets.Machines(Id);
+
+        // A ticket with no machine rows still deserves a tag - the machine is on the floor either way.
+        if (_machines.Count == 0) _machines.Add(new TicketEquipment { TicketId = Id });
+
+        var customer = Customers.Get(_ticket.CustomerId);
+        _customerName = customer?.DisplayName ?? "";
+        _phone = customer?.Phone ?? "";
+        _shopName = Settings.Get(SettingsStore.ShopName);
+    }
+
+    /// <summary>A tag is read at arm's length across a workshop, so it carries the gist, not the essay.</summary>
+    private static string Shorten(string text)
+    {
+        var flat = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        while (flat.Contains("  ")) flat = flat.Replace("  ", " ");
+
+        return flat.Length <= 90 ? flat : flat[..88].TrimEnd() + "…";
+    }
+}

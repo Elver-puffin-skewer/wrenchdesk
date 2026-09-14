@@ -5,6 +5,7 @@
 @inject ScheduleRepo Schedule
 @inject SettingsStore Settings
 @inject QuickItemRepo QuickItems
+@inject PhotoRepo Photos
 @inject NavigationManager Nav
 
 <PageTitle>@(_ticket?.Number ?? "Ticket") — WrenchDesk</PageTitle>
@@ -38,6 +39,7 @@ else
         <div class="spacer"></div>
         <div class="btn-row no-print">
             <a class="btn" href="@($"/tickets/{Id}/print")" target="_blank">🖨 Print</a>
+            <a class="btn" href="@($"/tickets/{Id}/tag")" target="_blank" title="A tag to tie to the machine">🏷 Tag</a>
             <button class="btn" @onclick="OpenPayment">+ Payment</button>
             <button class="btn btn-primary" @onclick="OpenSchedule">📅 Schedule</button>
         </div>
@@ -112,6 +114,13 @@ else
                                       @onchange="e => OnMachineComplaintChange(machine, e)"></textarea>
                         </div>
 
+                        <div class="field">
+                            <label>Where it is standing</label>
+                            <input type="text" placeholder="Bay 3, back row, second shelf…"
+                                   value="@machine.Location"
+                                   @onchange="e => OnMachineLocationChange(machine, e)" />
+                        </div>
+
                         <div class="field" style="margin-bottom:0">
                             <label>What we found / did</label>
                             <textarea rows="4" placeholder="Carb gummed up, cleaned and rebuilt. New plug and fuel filter."
@@ -119,6 +128,63 @@ else
                                       @onchange="e => OnMachineDiagnosisChange(machine, e)"></textarea>
                         </div>
                     </div>
+                }
+            </div>
+        </div>
+
+        <div class="card no-print">
+            <div class="card-head">
+                <h2>Photos</h2>
+                <div class="spacer"></div>
+                <span class="muted small">@_photos.Count on this ticket</span>
+            </div>
+            <div class="card-body">
+                <div class="muted small" style="margin-bottom:.6rem">
+                    How it came in, and what you found. Worth a minute when a machine arrives already
+                    damaged — it is the only version of that conversation anyone can check later.
+                </div>
+
+                @if (_photos.Count > 0)
+                {
+                    <div class="photo-grid">
+                        @foreach (var shot in _photos)
+                        {
+                            var photo = shot;
+                            <figure class="photo">
+                                <a href="@photo.Url" target="_blank" title="Open full size">
+                                    <img src="@photo.Url" alt="@(string.IsNullOrWhiteSpace(photo.Caption) ? "Photo on this ticket" : photo.Caption)" loading="lazy" />
+                                </a>
+                                <figcaption>
+                                    <input type="text" placeholder="Say what this shows…"
+                                           value="@photo.Caption"
+                                           @onchange="e => OnCaptionChange(photo, e)" />
+                                    <div class="photo-foot">
+                                        <span class="muted small">@(photo.TakenOn?.ToString("d MMM yyyy") ?? "")</span>
+                                        <div class="spacer"></div>
+                                        <button class="btn btn-ghost btn-sm" title="Remove this photo"
+                                                @onclick="() => RemovePhoto(photo)">✕</button>
+                                    </div>
+                                </figcaption>
+                            </figure>
+                        }
+                    </div>
+                }
+
+                <div class="btn-row" style="margin-top:.6rem;align-items:center">
+                    <label class="btn btn-sm" style="cursor:pointer;margin:0">
+                        📷 Add photos
+                        <InputFile OnChange="OnPhotosPicked" multiple accept="image/*"
+                                   style="display:none" />
+                    </label>
+                    <span class="muted small">
+                        On a phone this offers the camera. JPG, PNG or WEBP, up to
+                        @(PhotoRepo.MaxBytes / 1024 / 1024) MB each.
+                    </span>
+                </div>
+
+                @if (_photoError is not null)
+                {
+                    <div class="alert alert-warn" style="margin-top:.6rem">@_photoError</div>
                 }
             </div>
         </div>
@@ -275,6 +341,52 @@ else
                                             @onclick="() => RemoveLine(l)">✕</button>
                                 </td>
                             </tr>
+
+                            @if (l.Kind == "Part")
+                            {
+                                <tr class="order-row no-print">
+                                    <td colspan="@(_machines.Count > 1 ? 8 : 7)">
+                                        @if (!l.IsOnOrder && string.IsNullOrWhiteSpace(l.ArrivedOn))
+                                        {
+                                            <button class="btn btn-ghost btn-sm" @onclick="() => ToggleOrdered(l)">
+                                                📦 Had to order this
+                                            </button>
+                                        }
+                                        else if (l.IsOnOrder)
+                                        {
+                                            <div class="order-strip">
+                                                <span class="order-chip @(l.IsOverdue ? "late" : "")">
+                                                    @if (l.IsOverdue)
+                                                    {
+                                                        <text>Late — due @l.ExpectedOn</text>
+                                                    }
+                                                    else
+                                                    {
+                                                        <text>On order @l.DaysWaiting day@(l.DaysWaiting == 1 ? "" : "s")</text>
+                                                    }
+                                                </span>
+
+                                                <input type="text" placeholder="Who from?" style="max-width:11rem"
+                                                       value="@l.Supplier"
+                                                       @onchange="e => OnSupplierChange(l, e)" />
+
+                                                <label class="muted small">Due</label>
+                                                <input type="date" value="@l.ExpectedOn"
+                                                       @onchange="e => OnExpectedChange(l, e)" />
+
+                                                <button class="btn btn-sm" @onclick="() => MarkArrived(l)">It's here</button>
+                                                <button class="btn btn-ghost btn-sm" title="Not actually on order"
+                                                        @onclick="() => ToggleOrdered(l)">✕</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="order-chip here">Arrived @l.ArrivedOn</span>
+                                            <button class="btn btn-ghost btn-sm" @onclick="() => ToggleOrdered(l)">undo</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
@@ -513,6 +625,8 @@ else
     private Ticket? _ticket;
     private Customer? _customer;
     private List<TicketEquipment> _machines = new();
+    private List<Photo> _photos = new();
+    private string? _photoError;
     private List<Equipment> _customerEquipment = new();
     private List<TicketLine> _lines = new();
     private List<QuickItem> _quickItems = new();
@@ -551,6 +665,7 @@ else
         _customer = Customers.Get(_ticket.CustomerId);
         _customerEquipment = Customers.EquipmentFor(_ticket.CustomerId, includeArchived: true);
         _machines = Tickets.Machines(Id);
+        _photos = Photos.ForTicket(Id);
 
         _lines = Tickets.Lines(Id);
         _quickItems = QuickItems.Active();
@@ -622,6 +737,102 @@ else
     {
         machine.Diagnosis = e.Value?.ToString() ?? "";
         Tickets.UpdateMachine(machine);
+    }
+
+    private void OnMachineLocationChange(TicketEquipment machine, ChangeEventArgs e)
+    {
+        machine.Location = e.Value?.ToString() ?? "";
+        Tickets.UpdateMachine(machine);
+    }
+
+    // ---- Parts on order ----
+
+    private void OnSupplierChange(TicketLine line, ChangeEventArgs e)
+    {
+        line.Supplier = e.Value?.ToString() ?? "";
+        SaveLine(line);
+    }
+
+    private void OnExpectedChange(TicketLine line, ChangeEventArgs e)
+    {
+        line.ExpectedOn = Blank(e.Value?.ToString());
+        SaveLine(line);
+    }
+
+    /// <summary>
+    /// Marks a part ordered today, which is what puts it on the parts board. Pressed again it
+    /// takes it back off - ordering something by accident should be one click to undo.
+    /// </summary>
+    private void ToggleOrdered(TicketLine line)
+    {
+        if (string.IsNullOrWhiteSpace(line.OrderedOn))
+        {
+            line.OrderedOn = DateTime.Now.ToString("yyyy-MM-dd");
+        }
+        else
+        {
+            line.OrderedOn = null;
+            line.ExpectedOn = null;
+            line.ArrivedOn = null;
+        }
+
+        SaveLine(line);
+        Load();
+    }
+
+    private void MarkArrived(TicketLine line)
+    {
+        line.ArrivedOn = DateTime.Now.ToString("yyyy-MM-dd");
+        SaveLine(line);
+        _flash = $"{(string.IsNullOrWhiteSpace(line.Description) ? "Part" : line.Description)} marked as here.";
+        Load();
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    // ---- Photos ----
+
+    /// <summary>
+    /// Takes what the camera or the file picker handed over. Each one is reported on its own, so
+    /// a single unsupported file among five does not lose the other four.
+    /// </summary>
+    private async Task OnPhotosPicked(InputFileChangeEventArgs e)
+    {
+        _photoError = null;
+        var problems = new List<string>();
+
+        foreach (var file in e.GetMultipleFiles(maximumFileCount: 20))
+        {
+            if (file.Size > PhotoRepo.MaxBytes)
+            {
+                problems.Add($"{file.Name} is bigger than {PhotoRepo.MaxBytes / 1024 / 1024} MB.");
+                continue;
+            }
+
+            // One machine on the ticket means the photo is obviously of that one.
+            var only = _machines.Count == 1 ? _machines[0].EquipmentId : null;
+
+            await using var stream = file.OpenReadStream(PhotoRepo.MaxBytes);
+            var problem = await Photos.AddAsync(Id, only, file.Name, stream);
+
+            if (problem is not null) problems.Add(problem);
+        }
+
+        if (problems.Count > 0) _photoError = string.Join(" ", problems);
+
+        Load();
+    }
+
+    private void OnCaptionChange(Photo photo, ChangeEventArgs e)
+    {
+        photo.Caption = e.Value?.ToString() ?? "";
+        Photos.SetCaption(photo.Id, photo.Caption);
+    }
+
+    private void RemovePhoto(Photo photo)
+    {
+        Photos.Delete(photo.Id);
+        Load();
     }
 
     private void OnLineEquipmentChange(TicketLine line, ChangeEventArgs e)

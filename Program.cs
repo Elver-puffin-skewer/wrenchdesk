@@ -42,6 +42,7 @@ builder.Services.AddScoped<TicketRepo>();
 builder.Services.AddScoped<MoneyRepo>();
 builder.Services.AddScoped<ScheduleRepo>();
 builder.Services.AddScoped<QuickItemRepo>();
+builder.Services.AddScoped<PhotoRepo>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<GoogleAuthService>();
 builder.Services.AddScoped<CalendarSyncService>();
@@ -75,6 +76,18 @@ app.MapRazorComponents<App>()
 
 app.MapGet("/app.css", () => EmbeddedAsset("app.css", "text/css"));
 app.MapGet("/favicon.ico", () => EmbeddedAsset("favicon.ico", "image/x-icon"));
+
+// Photos of machines, served from the Photos folder beside the database. The repository decides
+// whether a name is one of ours before anything touches the disk, so a name dressed up to climb
+// out of that folder gets a 404 like any other name it does not recognise.
+app.MapGet("/photos/{fileName}", (string fileName, PhotoRepo photos) =>
+{
+    var path = photos.ResolveFile(fileName);
+
+    return path is null
+        ? Results.NotFound()
+        : Results.File(path, PhotoRepo.ContentTypeFor(path));
+});
 
 // The shop's own logo is an optional drop-in, kept with their data so it survives an update.
 app.MapGet("/logo.png", (Db db) =>

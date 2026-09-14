@@ -15,6 +15,13 @@ public class Db
     public string DatabasePath { get; }
     public string BackupDirectory { get; }
 
+    /// <summary>
+    /// Where photo files live - beside the database, not inside it. Keeping images out of the
+    /// SQLite file is what stops a shop's photos turning the one thing they copy to a USB stick
+    /// into something too big to bother copying.
+    /// </summary>
+    public string PhotoDirectory { get; }
+
     static Db()
     {
         // Lets SQL keep snake_case column names while models stay PascalCase.
@@ -31,6 +38,9 @@ public class Db
         Directory.CreateDirectory(DataDirectory);
         BackupDirectory = Path.Combine(DataDirectory, "Backups");
         Directory.CreateDirectory(BackupDirectory);
+
+        PhotoDirectory = Path.Combine(DataDirectory, "Photos");
+        Directory.CreateDirectory(PhotoDirectory);
 
         DatabasePath = Path.Combine(DataDirectory, "wrenchdesk.db");
         // Each connection keeps its own cache. Shared cache sounds like the thriftier choice and
@@ -364,6 +374,39 @@ public class Db
         -- tickets.complaint, tickets.diagnosis and tickets.equipment_id are left in place but are
         -- no longer read or written. Keeping them costs nothing and means the words above can be
         -- recovered by hand if this migration ever turns out to have been wrong.
+        """,
+
+        // 5 -> 6: parts on order, where the machine is standing, and photos
+        """
+        -- A ticket sitting on Waiting on Parts said nothing about which part, from whom, or when
+        -- it was meant to arrive, so a machine could sit three weeks on a carburettor nobody
+        -- remembered was backordered. The part is already a line on the ticket; these say where
+        -- it is. A line is on order once ordered_on is set and arrived_on is not.
+        ALTER TABLE ticket_lines ADD COLUMN supplier    TEXT NOT NULL DEFAULT '';
+        ALTER TABLE ticket_lines ADD COLUMN ordered_on  TEXT NULL;
+        ALTER TABLE ticket_lines ADD COLUMN expected_on TEXT NULL;
+        ALTER TABLE ticket_lines ADD COLUMN arrived_on  TEXT NULL;
+
+        CREATE INDEX ix_lines_on_order ON ticket_lines(arrived_on, expected_on);
+
+        -- In season there are forty machines on the lot and no way to tell which one is Fenner's.
+        -- It sits per machine rather than per ticket because two machines off one visit can
+        -- easily end up in different places.
+        ALTER TABLE ticket_equipment ADD COLUMN location TEXT NOT NULL DEFAULT '';
+
+        -- Photos of a machine as it came in, and of the work. The file itself lives beside the
+        -- database in a Photos folder rather than inside it: a shop's photos would bloat a file
+        -- whose great virtue is being small enough to copy to a stick, and an image is no use
+        -- to anyone as a blob. This table only records which file belongs to what.
+        CREATE TABLE photos (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id    INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+            equipment_id INTEGER NULL REFERENCES equipment(id) ON DELETE SET NULL,
+            file_name    TEXT NOT NULL,
+            caption      TEXT NOT NULL DEFAULT '',
+            created_utc  TEXT NOT NULL
+        );
+        CREATE INDEX ix_photos_ticket ON photos(ticket_id, id);
         """
     };
 }

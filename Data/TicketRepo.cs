@@ -251,8 +251,8 @@ public class TicketRepo
         }
 
         return conn.ExecuteScalar<long>("""
-            INSERT INTO ticket_equipment (ticket_id, equipment_id, complaint, diagnosis, sort_order)
-            VALUES (@TicketId, @EquipmentId, @Complaint, @Diagnosis, @SortOrder);
+            INSERT INTO ticket_equipment (ticket_id, equipment_id, complaint, diagnosis, sort_order, location)
+            VALUES (@TicketId, @EquipmentId, @Complaint, @Diagnosis, @SortOrder, @Location);
             SELECT last_insert_rowid();
             """, machine);
     }
@@ -263,7 +263,7 @@ public class TicketRepo
         conn.Execute("""
             UPDATE ticket_equipment SET
                 equipment_id = @EquipmentId, complaint = @Complaint,
-                diagnosis = @Diagnosis, sort_order = @SortOrder
+                diagnosis = @Diagnosis, sort_order = @SortOrder, location = @Location
             WHERE id = @Id;
             """, machine);
     }
@@ -303,8 +303,12 @@ public class TicketRepo
         }
 
         return conn.ExecuteScalar<long>("""
-            INSERT INTO ticket_lines (ticket_id, sort_order, kind, description, qty_milli, unit_cents, taxable, equipment_id)
-            VALUES (@TicketId, @SortOrder, @Kind, @Description, @QtyMilli, @UnitCents, @Taxable, @EquipmentId);
+            INSERT INTO ticket_lines
+                (ticket_id, sort_order, kind, description, qty_milli, unit_cents, taxable, equipment_id,
+                 supplier, ordered_on, expected_on, arrived_on)
+            VALUES
+                (@TicketId, @SortOrder, @Kind, @Description, @QtyMilli, @UnitCents, @Taxable, @EquipmentId,
+                 @Supplier, @OrderedOn, @ExpectedOn, @ArrivedOn);
             SELECT last_insert_rowid();
             """, line);
     }
@@ -316,7 +320,8 @@ public class TicketRepo
             UPDATE ticket_lines SET
                 sort_order = @SortOrder, kind = @Kind, description = @Description,
                 qty_milli = @QtyMilli, unit_cents = @UnitCents, taxable = @Taxable,
-                equipment_id = @EquipmentId
+                equipment_id = @EquipmentId, supplier = @Supplier,
+                ordered_on = @OrderedOn, expected_on = @ExpectedOn, arrived_on = @ArrivedOn
             WHERE id = @Id;
             """, line);
     }
@@ -360,6 +365,54 @@ public class TicketRepo
         }
 
         return newId;
+    }
+
+    /// <summary>
+    /// Every part the shop is waiting on, across all tickets, oldest order first.
+    ///
+    /// This is the list that answers "what is actually holding the floor up". A machine on
+    /// Waiting on Parts with nothing here is a machine nobody has ordered anything for, which is
+    /// worth knowing on its own.
+    /// </summary>
+    public List<PartOnOrderRow> PartsOnOrder()
+    {
+        using var conn = _db.Open();
+        return conn.Query<PartOnOrderRow>("""
+            SELECT tl.id AS line_id,
+                   tk.id AS ticket_id,
+                   tk.number AS ticket_number,
+                   tk.status AS ticket_status,
+                   TRIM(COALESCE(NULLIF(c.business_name, ''),
+                                 TRIM(c.first_name || ' ' || c.last_name))) AS customer_name,
+                   TRIM(COALESCE(e.year, '') || ' ' || COALESCE(e.make, '') || ' ' || COALESCE(e.model, '')) AS equipment_name,
+                   tl.description,
+                   tl.supplier,
+                   tl.ordered_on,
+                   tl.expected_on,
+                   COALESCE(te.location, '') AS location
+            FROM ticket_lines tl
+            JOIN tickets tk    ON tk.id = tl.ticket_id
+            JOIN customers c   ON c.id = tk.customer_id
+            LEFT JOIN equipment e ON e.id = tl.equipment_id
+            LEFT JOIN ticket_equipment te
+                   ON te.ticket_id = tl.ticket_id
+                  AND (te.equipment_id = tl.equipment_id
+                       OR (tl.equipment_id IS NULL AND te.sort_order = (
+                            SELECT MIN(sort_order) FROM ticket_equipment WHERE ticket_id = tl.ticket_id)))
+            WHERE tl.ordered_on IS NOT NULL AND TRIM(tl.ordered_on) <> ''
+              AND (tl.arrived_on IS NULL OR TRIM(tl.arrived_on) = '')
+              AND tk.status <> 'Declined'
+            GROUP BY tl.id
+            ORDER BY tl.ordered_on, tl.id;
+            """).ToList();
+    }
+
+    /// <summary>Marks a part as turned up, which is what takes it off the parts board.</summary>
+    public void MarkPartArrived(long lineId, string? arrivedOn = null)
+    {
+        using var conn = _db.Open();
+        conn.Execute("UPDATE ticket_lines SET arrived_on = @arrivedOn WHERE id = @lineId;",
+            new { lineId, arrivedOn = string.IsNullOrWhiteSpace(arrivedOn) ? Today() : arrivedOn });
     }
 
     /// <summary>Counts per status, for the dashboard tiles.</summary>

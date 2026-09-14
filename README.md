@@ -47,6 +47,22 @@ Calendar sync**: write a stop up here and it appears on the shop calendar; move 
 phone and it changes here. Every stop also has a **Directions** link that opens Google Maps for
 whoever is driving. See [Google Calendar sync](#google-calendar-sync).
 
+**Parts on order** — when a job is held up waiting on a part, mark that part line as ordered, say
+who it is coming from and when they promised it. The **Parts** page then gathers every part the
+shop is waiting on, oldest first, with anything past its promised date in red — and, just as
+usefully, lists tickets sitting on *Waiting on Parts* where nothing has actually been ordered.
+That last one is the machine that quietly sat for three weeks.
+
+**Where the machine is standing** — a line on each machine for bay 3, back row, second shelf,
+whatever the shop calls its own places. Print a **Tag** from any ticket to cut out and zip-tie to
+the handle: ticket number, customer, phone, machine and complaint, big enough to read across a
+workshop. One tag per machine on the ticket.
+
+**Photos** — pictures of a machine as it came in and of the work done, added from the ticket. On a
+phone the button offers the camera, so the write-up can happen at the bench. Worth a minute when
+something arrives already damaged: it is the only version of that conversation anyone can check
+later. Photos are kept as ordinary picture files next to the database, and backups take them too.
+
 **Common items** — the parts and jobs a shop repeats all day sit as one-click buttons on every
 ticket: air filter, spark plug, deck belt, oil change, sharpen blades. Each comes in priced at
 whatever you last charged for it, so the price list keeps itself. The list is yours to reorder,
@@ -56,7 +72,8 @@ rename and add to.
 a developer. It works offline and shows this shop's actual settings — where the records are, whether
 backups are on, the exact URL to type into a phone — instead of generic instructions.
 
-**Backups** — the entire system is one SQLite file. Press **Back up now** to write a copy straight to
+**Backups** — the shop's records are one SQLite file, with photos as files beside it; a backup
+takes both. Press **Back up now** to write a copy straight to
 a USB stick or external drive, or switch on a daily/weekly schedule that does it unattended, to
 **one or two places at once** — a stick at the bench and a drive on the router, say. Scheduled
 backups are **off until you turn them on**. See [Backups](#backups) below.
@@ -185,14 +202,24 @@ press Enter, and add or remove the WrenchDesk shortcut in the folder that opens.
 
 ## Where your data lives
 
-Everything is in one file:
+Everything the shop types is in one file:
 
 ```
 Documents\WrenchDesk\wrenchdesk.db
 ```
 
-To move the shop to a new PC, or to keep an off-site copy, copy that file. That's the whole system —
-there is no separate database server to install or configure.
+Photos are the exception, and deliberately so. They sit next to it as ordinary picture files:
+
+```
+Documents\WrenchDesk\Photos```
+
+Images inside the database would turn the one thing worth copying to a USB stick into something
+too big to bother copying, and a photo is no use to anyone as a blob. As files they can be opened,
+mailed or printed with anything, WrenchDesk or not.
+
+To move the shop to a new PC, or to keep an off-site copy, copy **both** — the `.db` file and the
+`Photos` folder. That's the whole system — there is no separate database server to install or
+configure.
 
 `DataDirectory` below can point anywhere **on a local disk**. Do not point it at a network share or
 mapped drive — see the caution under [Using it from another PC](#using-it-from-another-pc--the-house-on-the-same-property).
@@ -235,11 +262,15 @@ Plug the drive in, open **Settings → Back up now**, pick it from the list and 
 removable drives at the top. Pick *Somewhere else* to type a path — a network share or a second
 internal disk.
 
-Two things worth knowing:
+Three things worth knowing:
 
 - The drives listed are the ones plugged into **the shop PC**, not into the tablet you might be
   holding. The app writes the file server-side.
 - On-demand backups are **never deleted automatically**. They sit there until you remove them.
+- **Photos go too**, into a `Photos` folder beside the backup. Only pictures that are not already
+  there get copied, so backing up nightly to the same stick copies what is new rather than the
+  whole shop's photos every time. Nothing is ever deleted from that folder — a photo taken off a
+  ticket by mistake is still on the stick, which is rather the point of a backup.
 
 ### On a schedule
 
@@ -275,9 +306,13 @@ backup it just made.
 
 ### Restoring one
 
-Every backup file is a complete, working database — there is nothing else to restore. Close
-WrenchDesk, rename the backup to `wrenchdesk.db`, and put it where the old one was
-(**Settings → Your data** shows the exact path). Start WrenchDesk again.
+Every backup file is a complete, working database. Close WrenchDesk, rename the backup to
+`wrenchdesk.db`, and put it where the old one was (**Settings → Your data** shows the exact path).
+
+If the shop uses photos, copy the `Photos` folder from the backup back alongside it as well — the
+tickets will otherwise show gaps where the pictures were. Everything else is in the one file.
+
+Start WrenchDesk again.
 
 ### Which destination to choose
 
@@ -491,7 +526,6 @@ Deliberately left out of the first version, roughly in the order they'd be worth
 
 - **Inventory** — parts on hand, reorder points, and pulling a part onto a ticket decrementing stock.
   The owner flagged this as wanted eventually; the ticket line structure already has room for it.
-- **Photos on tickets** — before/after shots of a machine.
 - **Text/email the customer** when a repair is ready.
 - **Multiple users** with their own logins. Right now anyone who can reach the app can use it, which
   is the right trade-off for a single shop on its own wifi — see *Security* below.
@@ -534,7 +568,7 @@ python build\make-icon.py       # regenerate the app icon (needs Pillow)
 | | |
 | --- | --- |
 | **UI** | Blazor Server (.NET 8) — server-rendered, so a tablet only needs a browser |
-| **Data** | SQLite via Dapper, one local file, no server process |
+| **Data** | SQLite via Dapper, one local file, no server process (photos are files beside it) |
 | **Styling** | Hand-written CSS, no framework |
 | **Calendar** | Google Calendar API v3, OAuth 2.0 loopback flow, tokens kept in the shop's own database |
 | **Dependencies** | Dapper, Microsoft.Data.Sqlite, Google.Apis.Calendar.v3 |

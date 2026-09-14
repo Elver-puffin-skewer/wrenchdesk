@@ -140,11 +140,71 @@ public class TicketEquipment
     public string Diagnosis { get; set; } = "";
     public int SortOrder { get; set; }
 
+    /// <summary>
+    /// Where the machine is standing - bay 3, back row, second shelf. Whatever the shop calls
+    /// its own places; the point is being able to walk straight to it in July.
+    /// </summary>
+    public string Location { get; set; } = "";
+
     /// <summary>Filled in by the joined query for display; not stored on this row.</summary>
     public string EquipmentName { get; set; } = "";
 
     public string DisplayName =>
         string.IsNullOrWhiteSpace(EquipmentName) ? "Machine not specified" : EquipmentName;
+}
+
+/// <summary>
+/// One photo of a machine or of the work. The image itself is a file in the Photos folder beside
+/// the database; this is only the record of what it belongs to.
+/// </summary>
+public class Photo
+{
+    public long Id { get; set; }
+    public long TicketId { get; set; }
+
+    /// <summary>Which machine it is of, on a ticket covering more than one.</summary>
+    public long? EquipmentId { get; set; }
+
+    /// <summary>Name of the file in the Photos folder. Generated, never anything a person typed.</summary>
+    public string FileName { get; set; } = "";
+
+    public string Caption { get; set; } = "";
+    public string CreatedUtc { get; set; } = "";
+
+    /// <summary>Where the browser fetches it from.</summary>
+    public string Url => $"/photos/{FileName}";
+
+    public DateTime? TakenOn =>
+        DateTime.TryParse(CreatedUtc, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt.ToLocalTime() : null;
+}
+
+/// <summary>A part on order, with enough of its ticket attached to be acted on from one list.</summary>
+public class PartOnOrderRow
+{
+    public long LineId { get; set; }
+    public long TicketId { get; set; }
+    public string TicketNumber { get; set; } = "";
+    public string TicketStatus { get; set; } = "";
+    public string CustomerName { get; set; } = "";
+    public string EquipmentName { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string Supplier { get; set; } = "";
+    public string? OrderedOn { get; set; }
+    public string? ExpectedOn { get; set; }
+    public string Location { get; set; } = "";
+
+    public int DaysWaiting =>
+        DateOnly.TryParse(OrderedOn, System.Globalization.CultureInfo.InvariantCulture, out var from)
+            ? Math.Max(0, DateOnly.FromDateTime(DateTime.Today).DayNumber - from.DayNumber)
+            : 0;
+
+    public bool IsOverdue =>
+        DateOnly.TryParse(ExpectedOn, System.Globalization.CultureInfo.InvariantCulture, out var due)
+        && due < DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>Nothing was promised, so nobody can tell whether it is late. Worth chasing too.</summary>
+    public bool NoDatePromised => string.IsNullOrWhiteSpace(ExpectedOn);
 }
 
 public static class TicketStatus
@@ -193,6 +253,35 @@ public class TicketLine
 
     /// <summary>Which machine this was for, on a ticket covering more than one. Null means the ticket as a whole.</summary>
     public long? EquipmentId { get; set; }
+
+    /// <summary>Who the part was ordered from. Free text - shops order from whoever has it.</summary>
+    public string Supplier { get; set; } = "";
+
+    /// <summary>Set when the part was ordered. Until then this is just a line on an estimate.</summary>
+    public string? OrderedOn { get; set; }
+
+    /// <summary>When the supplier said it would come. Blank is allowed; plenty of them will not say.</summary>
+    public string? ExpectedOn { get; set; }
+
+    /// <summary>Set when it turned up. That is what takes the line off the parts board.</summary>
+    public string? ArrivedOn { get; set; }
+
+    /// <summary>Ordered and not here yet - the thing actually holding the machine up.</summary>
+    public bool IsOnOrder =>
+        !string.IsNullOrWhiteSpace(OrderedOn) && string.IsNullOrWhiteSpace(ArrivedOn);
+
+    /// <summary>On order and past the day it was promised for. Worth a phone call to the supplier.</summary>
+    public bool IsOverdue =>
+        IsOnOrder
+        && DateOnly.TryParse(ExpectedOn, System.Globalization.CultureInfo.InvariantCulture, out var due)
+        && due < DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>Days waited so far, for the parts board to sort and colour by.</summary>
+    public int DaysWaiting =>
+        IsOnOrder
+        && DateOnly.TryParse(OrderedOn, System.Globalization.CultureInfo.InvariantCulture, out var from)
+            ? Math.Max(0, DateOnly.FromDateTime(DateTime.Today).DayNumber - from.DayNumber)
+            : 0;
 
     public static readonly string[] Kinds = { "Labor", "Part", "Fee", "Discount" };
 
