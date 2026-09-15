@@ -109,9 +109,12 @@ public class QuickItemRepo
         if (item.DefaultCents > 0) return item.DefaultCents;
 
         using var conn = _db.Open();
+
+        // Matched without regard to case: somebody typing "air filter" on a ticket and somebody
+        // else pressing the Air Filter button mean the same part, and the price should carry.
         return conn.ExecuteScalar<long?>("""
             SELECT unit_cents FROM ticket_lines
-            WHERE description = @name AND unit_cents > 0
+            WHERE description COLLATE NOCASE = @name AND unit_cents > 0
             ORDER BY id DESC
             LIMIT 1;
             """, new { name = item.Name }) ?? 0;
@@ -128,12 +131,26 @@ public class QuickItemRepo
 
         // SQLite returns the row that produced MAX(id) for the bare columns beside it, which is
         // how this picks the newest line per description in one pass.
-        return conn.Query<(string Description, long UnitCents)>("""
-            SELECT description, unit_cents, MAX(id)
+        //
+        // Grouped NOCASE because the dictionary below is case-insensitive and the grouping has to
+        // agree with it. It did not: SQLite groups case-sensitively by default, so a shop that had
+        // written both "Air Filter" and "air filter" on tickets got two rows back that then landed
+        // on one key - and the exception that threw took the whole Settings screen down with it.
+        var rows = conn.Query<(string Description, long UnitCents)>("""
+            SELECT description, unit_cents, MAX(id) AS newest
             FROM ticket_lines
             WHERE unit_cents > 0
-            GROUP BY description;
-            """)
-            .ToDictionary(r => r.Description, r => r.UnitCents, StringComparer.OrdinalIgnoreCase);
+            GROUP BY description COLLATE NOCASE
+            ORDER BY newest;
+            """);
+
+        // Oldest first, so that where anything still collides - NOCASE folds only the ASCII
+        // letters where OrdinalIgnoreCase folds more - the newest price is the one left standing.
+        // Assigning through the indexer rather than building with ToDictionary is what keeps a
+        // duplicate a matter of which price shows, rather than a screen nobody can open.
+        var prices = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows) prices[row.Description] = row.UnitCents;
+
+        return prices;
     }
 }

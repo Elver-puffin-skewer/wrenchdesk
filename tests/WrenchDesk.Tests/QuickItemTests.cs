@@ -247,3 +247,68 @@ public class QuickItemTests
         Assert.Equal(25, h.QuickItems.Active().Count);
     }
 }
+
+/// <summary>
+/// A counter types the same part a dozen different ways over a season. "Air Filter" one week and
+/// "air filter" the next used to be enough to make the Settings screen unopenable.
+/// </summary>
+public class QuickItemCasingTests
+{
+    [Fact]
+    public void The_same_part_written_in_two_cases_does_not_break_the_price_list()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+
+        h.AddLine(ticketId, "Part", qty: 1, each: 14.99m, taxable: true, description: "Air Filter");
+        h.AddLine(ticketId, "Part", qty: 1, each: 15.99m, taxable: true, description: "air filter");
+        h.AddLine(ticketId, "Part", qty: 1, each: 4.99m, taxable: true, description: "Spark Plug");
+        h.AddLine(ticketId, "Part", qty: 1, each: 5.49m, taxable: true, description: "SPARK PLUG");
+
+        var prices = h.QuickItems.LastChargedByName();
+
+        // One entry per part, however it was spelled, and the newest price is the one kept.
+        Assert.Equal(2, prices.Count);
+        Assert.Equal(1599, prices["Air Filter"]);
+        Assert.Equal(549, prices["Spark Plug"]);
+    }
+
+    [Fact]
+    public void The_price_list_is_still_reachable_by_any_casing()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+        h.AddLine(ticketId, "Part", qty: 1, each: 12.50m, taxable: true, description: "Deck Belt");
+
+        var prices = h.QuickItems.LastChargedByName();
+
+        Assert.Equal(1250, prices["deck belt"]);
+        Assert.Equal(1250, prices["DECK BELT"]);
+    }
+
+    [Fact]
+    public void A_quick_item_picks_up_a_price_typed_in_a_different_case()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+
+        // Typed by hand on an earlier ticket, in whatever case the person felt like.
+        h.AddLine(ticketId, "Part", qty: 1, each: 9.75m, taxable: true, description: "oil filter");
+
+        var item = new QuickItem { Name = "Oil Filter", Kind = "Part" };
+
+        Assert.Equal(975, h.QuickItems.StartingPriceFor(item));
+    }
+
+    [Fact]
+    public void A_price_set_on_the_item_still_wins_over_history()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+        h.AddLine(ticketId, "Part", qty: 1, each: 9.75m, taxable: true, description: "oil filter");
+
+        var item = new QuickItem { Name = "Oil Filter", Kind = "Part", DefaultCents = 1200 };
+
+        Assert.Equal(1200, h.QuickItems.StartingPriceFor(item));
+    }
+}
