@@ -162,11 +162,14 @@
                         <option value="@TicketStatus.InProgress">In Progress — working on it now</option>
                     </select>
                 </div>
-                <div class="field">
-                    <label>Sales tax</label>
-                    <input type="text" value="@_taxDisplay" @onchange="OnTaxChange" />
-                    <div class="muted small" style="margin-top:.2rem">Shop default from Settings. Percent, e.g. 7.25</div>
-                </div>
+                @if (_taxEnabled)
+                {
+                    <div class="field">
+                        <label>Sales tax</label>
+                        <input type="text" value="@_taxDisplay" @onchange="OnTaxChange" />
+                        <div class="muted small" style="margin-top:.2rem">Shop default from Settings. Percent, e.g. 7.25</div>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -192,13 +195,17 @@
     private DateTime _intakeOn = DateTime.Today;
     private DateTime? _promisedOn;
     private string _status = TicketStatus.Estimate;
+    private bool _taxEnabled = true;
     private int _taxRateBp;
     private string _taxDisplay = "0";
     private string? _error;
 
     protected override void OnInitialized()
     {
-        _taxRateBp = Settings.GetInt(SettingsStore.TaxRateBp);
+        // A shop with tax switched off starts every ticket at zero, so nothing has to be
+        // remembered or cleared on the ticket afterwards.
+        _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
+        _taxRateBp = _taxEnabled ? Settings.GetInt(SettingsStore.TaxRateBp) : 0;
         _taxDisplay = (_taxRateBp / 100m).ToString("0.####");
     }
 

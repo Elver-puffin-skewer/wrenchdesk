@@ -251,11 +251,7 @@ else
         _isInvoice = _ticket.Status != TicketStatus.Estimate && _ticket.Status != TicketStatus.Declined;
     }
 
-    private static string PrintDescription(TicketLine line)
-    {
-        var text = string.IsNullOrWhiteSpace(line.Description) ? line.Kind : line.Description;
-        return line.Kind is "Labor" or "Fee" or "Discount" ? $"{text} ({line.Kind})" : text;
-    }
+    private static string PrintDescription(TicketLine line) => line.PrintLabel;
 
     private static string FormatIso(string? iso) =>
         DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)

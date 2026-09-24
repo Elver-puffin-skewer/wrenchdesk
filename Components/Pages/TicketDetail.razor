@@ -201,10 +201,13 @@ else
                         <label>Promised by</label>
                         <input type="date" value="@_ticket.PromisedOn" @onchange="e => SetDate(e, d => _ticket!.PromisedOn = d)" />
                     </div>
-                    <div class="field">
+                    @if (ShowTax)
+                    {
+                        <div class="field">
                         <label>Sales tax %</label>
                         <input type="text" value="@((_ticket.TaxRateBp / 100m).ToString("0.####"))" @onchange="OnTaxChange" />
                     </div>
+                    }
                 </div>
 
                 <div class="field">
@@ -285,7 +288,11 @@ else
                             <th>Description</th>
                             <th class="num" style="width:6rem">Qty</th>
                             <th class="num" style="width:8rem">Each</th>
-                            <th class="shrink">Tax</th>
+                            @if (ShowTax)
+                            {
+                                <th class="shrink">Tax</th>
+                            }
+                            <th class="shrink no-print" title="Tick a line you are waiting on">Order</th>
                             <th class="num" style="width:8rem">Total</th>
                             <th class="shrink no-print"></th>
                         </tr>
@@ -331,59 +338,74 @@ else
                                            value="@((l.UnitCents / 100m).ToString("0.00"))"
                                            @onchange="e => OnUnitChange(l, e)" />
                                 </td>
-                                <td class="shrink" style="text-align:center">
-                                    <input type="checkbox" checked="@l.Taxable"
-                                           @onchange="e => OnTaxableChange(l, e)" />
+                                @if (ShowTax)
+                                {
+                                    <td class="shrink" style="text-align:center">
+                                        <input type="checkbox" checked="@l.Taxable"
+                                               @onchange="e => OnTaxableChange(l, e)" />
+                                    </td>
+                                }
+                                <td class="shrink no-print" style="text-align:center">
+                                    @if (l.Kind != "Discount")
+                                    {
+                                        <input type="checkbox" checked="@(!string.IsNullOrWhiteSpace(l.OrderedOn))"
+                                               title="@(l.IsOnOrder ? "On order - untick if it is not" : "Waiting on this one")"
+                                               @onchange="() => ToggleOrdered(l)" />
+                                    }
                                 </td>
                                 <td class="num strong">@Money.Fmt(l.TotalCents)</td>
                                 <td class="shrink no-print">
-                                    <button class="btn btn-ghost btn-sm" title="Remove line"
-                                            @onclick="() => RemoveLine(l)">✕</button>
+                                    <div class="row-tools">
+                                        <button class="btn btn-ghost btn-xs" title="Move up"
+                                                disabled="@(_lines.IndexOf(l) == 0)"
+                                                @onclick="() => MoveLine(l, true)">▲</button>
+                                        <button class="btn btn-ghost btn-xs" title="Move down"
+                                                disabled="@(_lines.IndexOf(l) == _lines.Count - 1)"
+                                                @onclick="() => MoveLine(l, false)">▼</button>
+                                        <button class="btn btn-ghost btn-sm" title="Remove line"
+                                                @onclick="() => RemoveLine(l)">✕</button>
+                                    </div>
                                 </td>
                             </tr>
 
-                            @if (l.Kind == "Part")
+                            @* Only a line actually being waited on takes a row of its own. Every
+                               part used to carry a full-width "Had to order this" band whether it
+                               was on order or not, which put a gap between every item on the
+                               ticket. The tick in the Order column is what opens this now. *@
+                            @if (l.IsOnOrder)
                             {
                                 <tr class="order-row no-print">
-                                    <td colspan="@(_machines.Count > 1 ? 8 : 7)">
-                                        @if (!l.IsOnOrder && string.IsNullOrWhiteSpace(l.ArrivedOn))
-                                        {
-                                            <button class="btn btn-ghost btn-sm" @onclick="() => ToggleOrdered(l)">
-                                                📦 Had to order this
-                                            </button>
-                                        }
-                                        else if (l.IsOnOrder)
-                                        {
-                                            <div class="order-strip">
-                                                <span class="order-chip @(l.IsOverdue ? "late" : "")">
-                                                    @if (l.IsOverdue)
-                                                    {
-                                                        <text>Late — due @l.ExpectedOn</text>
-                                                    }
-                                                    else
-                                                    {
-                                                        <text>On order @l.DaysWaiting day@(l.DaysWaiting == 1 ? "" : "s")</text>
-                                                    }
-                                                </span>
+                                    <td colspan="@OrderStripSpan">
+                                        <div class="order-strip">
+                                            <span class="order-chip @(l.IsOverdue ? "late" : "")">
+                                                @if (l.IsOverdue)
+                                                {
+                                                    <text>Late — due @l.ExpectedOn</text>
+                                                }
+                                                else
+                                                {
+                                                    <text>On order @l.DaysWaiting day@(l.DaysWaiting == 1 ? "" : "s")</text>
+                                                }
+                                            </span>
 
-                                                <input type="text" placeholder="Who from?" style="max-width:11rem"
-                                                       value="@l.Supplier"
-                                                       @onchange="e => OnSupplierChange(l, e)" />
+                                            <input type="text" placeholder="Who from?" style="max-width:11rem"
+                                                   value="@l.Supplier"
+                                                   @onchange="e => OnSupplierChange(l, e)" />
 
-                                                <label class="muted small">Due</label>
-                                                <input type="date" value="@l.ExpectedOn"
-                                                       @onchange="e => OnExpectedChange(l, e)" />
+                                            <label class="muted small">Due</label>
+                                            <input type="date" value="@l.ExpectedOn"
+                                                   @onchange="e => OnExpectedChange(l, e)" />
 
-                                                <button class="btn btn-sm" @onclick="() => MarkArrived(l)">It's here</button>
-                                                <button class="btn btn-ghost btn-sm" title="Not actually on order"
-                                                        @onclick="() => ToggleOrdered(l)">✕</button>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <span class="order-chip here">Arrived @l.ArrivedOn</span>
-                                            <button class="btn btn-ghost btn-sm" @onclick="() => ToggleOrdered(l)">undo</button>
-                                        }
+                                            <button class="btn btn-sm" @onclick="() => MarkArrived(l)">It's here</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(l.ArrivedOn))
+                            {
+                                <tr class="order-row no-print">
+                                    <td colspan="@OrderStripSpan">
+                                        <span class="order-chip here">Arrived @l.ArrivedOn</span>
                                     </td>
                                 </tr>
                             }
@@ -625,6 +647,7 @@ else
     private Ticket? _ticket;
     private Customer? _customer;
     private List<TicketEquipment> _machines = new();
+    private bool _taxEnabled = true;
     private List<Photo> _photos = new();
     private string? _photoError;
     private List<Equipment> _customerEquipment = new();
@@ -664,6 +687,7 @@ else
 
         _customer = Customers.Get(_ticket.CustomerId);
         _customerEquipment = Customers.EquipmentFor(_ticket.CustomerId, includeArchived: true);
+        _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
         _machines = Tickets.Machines(Id);
         _photos = Photos.ForTicket(Id);
 
@@ -700,6 +724,25 @@ else
         var raw = e.Value?.ToString();
         assign(string.IsNullOrWhiteSpace(raw) ? null : raw);
         SaveTicket();
+    }
+
+    /// <summary>
+    /// Whether this ticket shows anything about tax.
+    ///
+    /// A shop that has switched tax off should never be asked about it again - but a ticket
+    /// written while tax was on already has a rate baked into its total, and hiding that would
+    /// leave an invoice whose lines do not add up to the figure at the bottom. So a rate that is
+    /// already there always shows, whatever the setting says now.
+    /// </summary>
+    private bool ShowTax => _taxEnabled || (_ticket?.TaxRateBp ?? 0) > 0;
+
+    /// <summary>Width of the strip under a line, which follows whichever columns are on show.</summary>
+    private int OrderStripSpan => 6 + (_machines.Count > 1 ? 1 : 0) + (ShowTax ? 1 : 0);
+
+    private void MoveLine(TicketLine line, bool up)
+    {
+        Tickets.MoveLine(line.Id, up);
+        Load();
     }
 
     // ---- Machines ----

@@ -326,6 +326,45 @@ public class TicketRepo
             """, line);
     }
 
+    /// <summary>
+    /// Moves a line one place up or down the ticket, so the invoice reads in the order the work
+    /// happened rather than the order somebody happened to type it. Swaps the two sort values,
+    /// which are spaced by ten.
+    /// </summary>
+    public void MoveLine(long lineId, bool up)
+    {
+        using var conn = _db.Open();
+        // The new order is worked out from the order just read, so nothing may move in between.
+        using var tx = conn.BeginTransaction(deferred: false);
+
+        var line = conn.QuerySingleOrDefault<TicketLine>(
+            "SELECT * FROM ticket_lines WHERE id = @lineId;", new { lineId }, tx);
+        if (line is null) return;
+
+        var lines = conn.Query<TicketLine>(
+            "SELECT * FROM ticket_lines WHERE ticket_id = @ticketId ORDER BY sort_order, id;",
+            new { ticketId = line.TicketId }, tx).ToList();
+
+        var index = lines.FindIndex(l => l.Id == lineId);
+        var swapWith = up ? index - 1 : index + 1;
+        if (index < 0 || swapWith < 0 || swapWith >= lines.Count) return;
+
+        var a = lines[index];
+        var b = lines[swapWith];
+
+        // Lines added before sort values were spaced can share a number; give them distinct ones
+        // so the swap actually changes the order rather than leaving it to the id tie-break.
+        var (first, second) = (Math.Min(a.SortOrder, b.SortOrder), Math.Max(a.SortOrder, b.SortOrder));
+        if (first == second) second = first + 10;
+
+        conn.Execute("UPDATE ticket_lines SET sort_order = @order WHERE id = @id;",
+            new { order = up ? first : second, id = a.Id }, tx);
+        conn.Execute("UPDATE ticket_lines SET sort_order = @order WHERE id = @id;",
+            new { order = up ? second : first, id = b.Id }, tx);
+
+        tx.Commit();
+    }
+
     public void DeleteLine(long lineId)
     {
         using var conn = _db.Open();

@@ -892,3 +892,35 @@ tr.row-late td { background: #fdf3f3; }
     /* Tags print several to a page and get cut apart. */
     .tag-sheet { break-inside: avoid; margin-bottom: .35in; }
 }
+
+/* ---- Line row tools ---------------------------------------------------- */
+/* Move up / move down / remove, kept together so they read as one control. */
+
+.row-tools {
+    display: flex;
+    align-items: center;
+    gap: .1rem;
+    justify-content: flex-end;
+}
+
+.btn-xs {
+    padding: .1rem .3rem;
+    font-size: .7rem;
+    line-height: 1.1;
+    min-width: 1.3rem;
+}
+
+.btn-xs:disabled { opacity: .25; cursor: default; }
+
+/* The strip under a line that is on order sits tight to its row, since only lines actually
+   being waited on get one. */
+.order-row > td { padding-top: .1rem; padding-bottom: .35rem; }
+
+label.check {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-weight: 400;
+}
+
+label.check input { margin: 0; }

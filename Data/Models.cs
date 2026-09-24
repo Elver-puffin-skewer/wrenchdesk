@@ -291,6 +291,17 @@ public class TicketLine
         set => QtyMilli = (long)Math.Round(value * 1000m, MidpointRounding.AwayFromZero);
     }
 
+    /// <summary>
+    /// How the line reads on a printed estimate or invoice.
+    ///
+    /// What the shop typed is what the customer sees. The kind is a filing decision the shop made
+    /// for itself - a line typed "Welding" on a Fee should not print "Welding (Fee)", and a
+    /// labour line left blank should say "Labor" once rather than "Labor (Labor)". The kind only
+    /// stands in when nothing was written.
+    /// </summary>
+    public string PrintLabel =>
+        string.IsNullOrWhiteSpace(Description) ? Kind : Description.Trim();
+
     /// <summary>Discounts subtract no matter how the quantity or price was typed in.</summary>
     public long TotalCents
     {

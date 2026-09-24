@@ -59,9 +59,27 @@
                     <div class="muted small" style="margin-top:.2rem">Prefills every labor line you add.</div>
                 </div>
                 <div class="field">
-                    <label>Sales tax %</label>
-                    <input type="text" @bind="_taxRate" />
-                    <div class="muted small" style="margin-top:.2rem">Applied to new tickets. Use 0 if you do not charge tax.</div>
+                    <label>Sales tax</label>
+                    <label class="check">
+                        <input type="checkbox" @bind="_taxEnabled" />
+                        <span>This shop charges sales tax</span>
+                    </label>
+                    @if (_taxEnabled)
+                    {
+                        <input type="text" @bind="_taxRate" style="margin-top:.35rem" />
+                        <div class="muted small" style="margin-top:.2rem">
+                            Percent, applied to new tickets. The rate is saved onto each ticket as it is
+                            created, so changing it never rewrites old ones.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="muted small" style="margin-top:.2rem">
+                            Tickets will not ask about tax at all — no rate, and no tax tick on each line.
+                            A ticket written earlier that already carries tax keeps showing it, so its
+                            invoice still adds up.
+                        </div>
+                    }
                 </div>
                 <div class="field">
                     <label>Ticket prefix</label>
@@ -797,6 +815,7 @@
     private Dictionary<string, string> _values = new();
     private string _laborRate = "";
     private string _taxRate = "";
+    private bool _taxEnabled = true;
     private string? _flash;
     private long _dbSize;
 
@@ -842,6 +861,7 @@
         _values = Settings.GetAll();
         _laborRate = (Settings.GetInt(SettingsStore.LaborRateCents) / 100m).ToString("0.00");
         _taxRate = (Settings.GetInt(SettingsStore.TaxRateBp) / 100m).ToString("0.####");
+        _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
 
         _autoEnabled = Settings.GetBool(SettingsStore.BackupAutoEnabled);
         _frequency = Settings.Get(SettingsStore.BackupFrequency);
@@ -993,8 +1013,12 @@
         if (Money.TryParse(_laborRate, out var laborCents))
             _values[SettingsStore.LaborRateCents] = laborCents.ToString();
 
+        _values[SettingsStore.TaxEnabled] = _taxEnabled ? "true" : "false";
+
+        // The rate is left exactly as it was when tax is switched off rather than zeroed, so
+        // switching it back on does not mean looking the percentage up again.
         var taxText = _taxRate.Replace("%", "").Trim();
-        if (decimal.TryParse(taxText, NumberStyles.Any, CultureInfo.InvariantCulture, out var pct))
+        if (_taxEnabled && decimal.TryParse(taxText, NumberStyles.Any, CultureInfo.InvariantCulture, out var pct))
             _values[SettingsStore.TaxRateBp] = ((int)Math.Round(pct * 100m, MidpointRounding.AwayFromZero)).ToString();
 
         _values[SettingsStore.BackupAutoEnabled] = _autoEnabled ? "true" : "false";

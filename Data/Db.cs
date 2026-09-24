@@ -514,6 +514,13 @@ public class SettingsStore
     public const string ShopPhone = "shop.phone";
     public const string ShopEmail = "shop.email";
     public const string TaxRateBp = "tax.rate_bp";
+
+    /// <summary>
+    /// Whether this shop charges sales tax at all. Off takes the rate box and the per-line tax
+    /// ticks off the ticket screen entirely, rather than leaving a shop that never charges it
+    /// answering the same question on every line forever.
+    /// </summary>
+    public const string TaxEnabled = "tax.enabled";
     public const string LaborRateCents = "labor.rate_cents";
     public const string TicketPrefix = "ticket.prefix";
     public const string EstimateFooter = "estimate.footer";
@@ -577,6 +584,10 @@ public class SettingsStore
         [ShopPhone] = "(256) 852-0489",
         [ShopEmail] = "",
         [TaxRateBp] = "0",
+
+        // On by default, so nothing changes for a shop that already charges tax. A shop that does
+        // not turns it off once in Settings.
+        [TaxEnabled] = "true",
         [LaborRateCents] = "6500",
         [TicketPrefix] = "WSE",
         [EstimateFooter] = "Estimate valid for 30 days. Parts and labor may change if additional problems are found.",
