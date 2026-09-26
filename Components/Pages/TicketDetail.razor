@@ -50,6 +50,19 @@ else
         <div class="alert alert-ok">@_flash</div>
     }
 
+    @if (_closeProblem is not null)
+    {
+        <div class="alert alert-warn">
+            @_closeProblem
+            @if (string.IsNullOrWhiteSpace(_ticket.CompletedOn))
+            {
+                <button class="btn btn-sm" style="margin-left:.6rem" @onclick="CompletedToday">
+                    It was finished today
+                </button>
+            }
+        </div>
+    }
+
     <div class="card no-print">
         <div class="card-body" style="padding:.8rem 1.1rem">
             <div class="btn-row">
@@ -198,8 +211,18 @@ else
                         <input type="date" value="@_ticket.IntakeOn" @onchange="e => SetDate(e, d => _ticket!.IntakeOn = d ?? _ticket.IntakeOn)" />
                     </div>
                     <div class="field">
+                        <label>Date completed</label>
+                        <input type="date" value="@_ticket.CompletedOn"
+                               @onchange="e => SetDate(e, d => _ticket!.CompletedOn = d)" />
+                        <div class="muted small" style="margin-top:.2rem">
+                            The day the work was finished. This is the day its money counts as takings,
+                            so put the real day here if it was not today.
+                        </div>
+                    </div>
+                    <div class="field">
                         <label>Promised by</label>
                         <input type="date" value="@_ticket.PromisedOn" @onchange="e => SetDate(e, d => _ticket!.PromisedOn = d)" />
+                        <div class="muted small" style="margin-top:.2rem">What you told the customer. Prints on the estimate.</div>
                     </div>
                     @if (ShowTax)
                     {
@@ -467,7 +490,16 @@ else
                             {
                                 var pay = p;
                                 <tr>
-                                    <td class="tnum small">@FormatIso(p.PaidOn)</td>
+                                    <td class="tnum small">
+                                        @FormatIso(p.PaidOn)
+                                        @if (p.CountedOnAnotherDay)
+                                        {
+                                            <div class="muted" style="font-size:.7rem"
+                                                 title="Takings are counted on the day the job was finished">
+                                                counts @FormatIso(p.RevenueOn)
+                                            </div>
+                                        }
+                                    </td>
                                     <td class="small">@p.Method</td>
                                     <td class="small muted">@($"{p.Reference} {p.Note}".Trim())</td>
                                     <td class="num money-pos">@Money.Fmt(p.AmountCents)</td>
@@ -660,6 +692,7 @@ else
     private List<AppointmentRow> _appointments = new();
     private TicketTotals _totals = new();
     private string? _flash;
+    private string? _closeProblem;
     private bool _confirmDelete;
 
     private bool _paymentModalOpen;
@@ -714,9 +747,55 @@ else
 
     private void ChangeStatus(string status)
     {
+        if (status == TicketStatus.Closed)
+        {
+            // Closing is what books the job's money, and to which week. Whoever closes it is the
+            // person who knows both answers, so they are asked for them here rather than leaving
+            // a total to be puzzled over at the end of the month.
+            var problem = WhyItCannotBeClosed();
+            if (problem is not null)
+            {
+                _flash = null;
+                _closeProblem = problem;
+                return;
+            }
+        }
+
+        _closeProblem = null;
         Tickets.SetStatus(Id, status);
         _flash = $"Moved to {status}.";
         Load();
+    }
+
+    /// <summary>
+    /// Fills the completion date with today, for the common case where the job was finished the
+    /// same day somebody got round to closing the ticket. Still editable afterwards.
+    /// </summary>
+    private void CompletedToday()
+    {
+        if (_ticket is null) return;
+
+        _ticket.CompletedOn = DateTime.Now.ToString("yyyy-MM-dd");
+        SaveTicket();
+        _closeProblem = WhyItCannotBeClosed();
+        Load();
+    }
+
+    /// <summary>
+    /// What is missing before this ticket can be closed, or null when it is ready to be.
+    /// </summary>
+    private string? WhyItCannotBeClosed()
+    {
+        var needsDate = string.IsNullOrWhiteSpace(_ticket?.CompletedOn);
+        var needsPayment = _payments.Count == 0;
+
+        return (needsDate, needsPayment) switch
+        {
+            (true, true) => "Set the date completed and record the payment before closing this ticket.",
+            (true, false) => "Set the date completed before closing this ticket — it decides which week the money counts in.",
+            (false, true) => "Record the payment before closing this ticket.",
+            _ => null
+        };
     }
 
     private void SetDate(ChangeEventArgs e, Action<string?> assign)

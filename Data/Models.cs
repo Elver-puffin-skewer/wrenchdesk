@@ -490,7 +490,20 @@ public class PaymentRow
     public string Method { get; set; } = "";
     public string Reference { get; set; } = "";
     public string Note { get; set; } = "";
+    /// <summary>The day the money actually changed hands.</summary>
     public string PaidOn { get; set; } = "";
+
+    /// <summary>
+    /// The day it counts as takings: the job's completion date where the ticket has one, and the
+    /// day it was paid otherwise. Usually the same as <see cref="PaidOn"/>; different when money
+    /// was handed over before the job was finished.
+    /// </summary>
+    public string RevenueOn { get; set; } = "";
+
+    /// <summary>True when the takings date and the payment date are not the same day.</summary>
+    public bool CountedOnAnotherDay =>
+        !string.IsNullOrWhiteSpace(RevenueOn) && RevenueOn != PaidOn;
+
     public long? CustomerId { get; set; }
     public string CustomerName { get; set; } = "";
     public long? TicketId { get; set; }

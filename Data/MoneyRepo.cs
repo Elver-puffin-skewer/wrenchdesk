@@ -20,8 +20,26 @@ public class MoneyRepo
     private static string NowUtc() => DateTime.UtcNow.ToString("O");
     public static string Iso(DateTime d) => d.ToString("yyyy-MM-dd");
 
+    /// <summary>
+    /// The day a payment counts as takings on.
+    ///
+    /// The shop reckons a job's money to the week the work was finished, not the week the machine
+    /// came in or the week a deposit happened to be handed over. So a payment against a ticket
+    /// that has been completed counts on that completion date; anything else - a payment on a job
+    /// still open, or money not attached to a ticket at all - counts on the day it was taken,
+    /// because there is no completion date to use and the cash is real either way.
+    ///
+    /// Every dated money query goes through this one expression. Two of them working it out
+    /// differently is how a dashboard and a report end up disagreeing about the same week.
+    /// </summary>
+    private const string RevenueDate = "COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on)";
+
+    /// <summary>The join every dated money query needs, since the date now depends on the ticket.</summary>
+    private const string RevenueFrom = "FROM payments p LEFT JOIN tickets tk ON tk.id = p.ticket_id";
+
     private const string RowSelect = """
         SELECT p.id, p.amount_cents, p.method, p.reference, p.note, p.paid_on,
+               COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on) AS revenue_on,
                p.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
                              TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')))) AS customer_name,
@@ -36,7 +54,7 @@ public class MoneyRepo
     {
         using var conn = _db.Open();
         return conn.Query<PaymentRow>(
-            $"{RowSelect} WHERE p.paid_on BETWEEN @from AND @to ORDER BY p.paid_on DESC, p.id DESC;",
+            $"{RowSelect} WHERE {RevenueDate} BETWEEN @from AND @to ORDER BY {RevenueDate} DESC, p.id DESC;",
             new { from = Iso(from), to = Iso(to) }).ToList();
     }
 
@@ -96,7 +114,7 @@ public class MoneyRepo
     {
         using var conn = _db.Open();
         return conn.ExecuteScalar<long?>(
-            "SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE paid_on BETWEEN @from AND @to;",
+            $"SELECT COALESCE(SUM(p.amount_cents), 0) {RevenueFrom} WHERE {RevenueDate} BETWEEN @from AND @to;",
             new { from = Iso(from), to = Iso(to) }) ?? 0;
     }
 
@@ -120,11 +138,11 @@ public class MoneyRepo
     public List<MoneyBucket> DailyBuckets(DateTime from, DateTime to)
     {
         using var conn = _db.Open();
-        var rows = conn.Query<(string PaidOn, long Total, int Count)>("""
-            SELECT paid_on, COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS count
-            FROM payments
-            WHERE paid_on BETWEEN @from AND @to
-            GROUP BY paid_on;
+        var rows = conn.Query<(string PaidOn, long Total, int Count)>($"""
+            SELECT {RevenueDate} AS revenue_on, COALESCE(SUM(p.amount_cents), 0) AS total, COUNT(*) AS count
+            {RevenueFrom}
+            WHERE {RevenueDate} BETWEEN @from AND @to
+            GROUP BY {RevenueDate};
             """, new { from = Iso(from), to = Iso(to) })
             .ToDictionary(r => r.PaidOn, r => (r.Total, r.Count));
 
@@ -173,11 +191,13 @@ public class MoneyRepo
     public List<(string Method, long TotalCents, int Count)> ByMethod(DateTime from, DateTime to)
     {
         using var conn = _db.Open();
-        return conn.Query<(string Method, long TotalCents, int Count)>("""
-            SELECT method, COALESCE(SUM(amount_cents), 0) AS total_cents, COUNT(*) AS count
-            FROM payments
-            WHERE paid_on BETWEEN @from AND @to
-            GROUP BY method
+        // Reconciling the till for a week has to cover the same payments that week's total does,
+        // so this splits the same set by method rather than a set of its own.
+        return conn.Query<(string Method, long TotalCents, int Count)>($"""
+            SELECT p.method, COALESCE(SUM(p.amount_cents), 0) AS total_cents, COUNT(*) AS count
+            {RevenueFrom}
+            WHERE {RevenueDate} BETWEEN @from AND @to
+            GROUP BY p.method
             ORDER BY total_cents DESC;
             """, new { from = Iso(from), to = Iso(to) }).ToList();
     }
@@ -200,12 +220,16 @@ public class MoneyRepo
     {
         var rows = InRange(from, to);
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Date,Amount,Method,Customer,Ticket,Reference,Note");
+        sb.AppendLine("Date,Paid On,Amount,Method,Customer,Ticket,Reference,Note");
 
-        foreach (var r in rows.OrderBy(r => r.PaidOn).ThenBy(r => r.Id))
+        foreach (var r in rows.OrderBy(r => r.RevenueOn).ThenBy(r => r.Id))
         {
             sb.AppendLine(string.Join(",", new[]
             {
+                // Date is the day it counts as takings - the job's completion date where there is
+                // one. Paid On is the day the money actually changed hands, so the two can be
+                // told apart when they differ.
+                Csv(r.RevenueOn),
                 Csv(r.PaidOn),
                 (r.AmountCents / 100m).ToString("0.00"),
                 Csv(r.Method),

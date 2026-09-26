@@ -156,7 +156,13 @@
                     {
                         var pay = p;
                         <tr>
-                            <td class="tnum small">@FormatIso(p.PaidOn)</td>
+                            <td class="tnum small">
+                                @FormatIso(p.RevenueOn)
+                                @if (p.CountedOnAnotherDay)
+                                {
+                                    <div class="muted" style="font-size:.7rem">paid @FormatIso(p.PaidOn)</div>
+                                }
+                            </td>
                             <td>
                                 @if (p.CustomerId is not null)
                                 {
