@@ -103,6 +103,45 @@
                 <textarea rows="3" @bind="_values[SettingsStore.EstimateFooter]"></textarea>
                 <div class="muted small" style="margin-top:.2rem">Printed at the bottom of estimates, above the signature line.</div>
             </div>
+
+                <div class="field span-2">
+                    <label>The promised-by date</label>
+                    <label class="check">
+                        <input type="checkbox" @bind="_showPromised" />
+                        <span>Show a promised-by date on tickets</span>
+                    </label>
+                    @if (_showPromised)
+                    {
+                        <input type="text" @bind="_promisedLabel" placeholder="Promised by" style="margin-top:.35rem" />
+                        <div class="muted small" style="margin-top:.2rem">
+                            What to call it. A shop that gives a best case rather than a hard date might
+                            prefer "Best case" or "Est. completion".
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="muted small" style="margin-top:.2rem">
+                            The field is off the ticket screens and off the printed estimate. Dates already
+                            saved on old tickets are kept, and come back if you switch it on again.
+                        </div>
+                    }
+                </div>
+
+                <div class="field span-2">
+                    <label>What prints on the estimate and invoice</label>
+                    <label class="check">
+                        <input type="checkbox" @bind="_printComplaint" />
+                        <span>The customer's reported problem</span>
+                    </label>
+                    <label class="check" style="margin-top:.2rem">
+                        <input type="checkbox" @bind="_printDiagnosis" />
+                        <span>What we found / did</span>
+                    </label>
+                    <div class="muted small" style="margin-top:.2rem">
+                        Both still show on the ticket itself. Turn the second one off if you use it for
+                        your own history and working notes rather than for the customer's copy.
+                    </div>
+                </div>
         </div>
     </div>
 </div>
@@ -816,6 +855,10 @@
     private string _laborRate = "";
     private string _taxRate = "";
     private bool _taxEnabled = true;
+    private bool _showPromised = true;
+    private string _promisedLabel = "";
+    private bool _printComplaint = true;
+    private bool _printDiagnosis = true;
     private string? _flash;
     private long _dbSize;
 
@@ -862,6 +905,10 @@
         _laborRate = (Settings.GetInt(SettingsStore.LaborRateCents) / 100m).ToString("0.00");
         _taxRate = (Settings.GetInt(SettingsStore.TaxRateBp) / 100m).ToString("0.####");
         _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
+        _showPromised = Settings.GetBool(SettingsStore.PromisedShow);
+        _promisedLabel = Settings.Get(SettingsStore.PromisedLabel);
+        _printComplaint = Settings.GetBool(SettingsStore.PrintShowComplaint);
+        _printDiagnosis = Settings.GetBool(SettingsStore.PrintShowDiagnosis);
 
         _autoEnabled = Settings.GetBool(SettingsStore.BackupAutoEnabled);
         _frequency = Settings.Get(SettingsStore.BackupFrequency);
@@ -1014,6 +1061,11 @@
             _values[SettingsStore.LaborRateCents] = laborCents.ToString();
 
         _values[SettingsStore.TaxEnabled] = _taxEnabled ? "true" : "false";
+        _values[SettingsStore.PromisedShow] = _showPromised ? "true" : "false";
+        _values[SettingsStore.PromisedLabel] =
+            string.IsNullOrWhiteSpace(_promisedLabel) ? "Promised by" : _promisedLabel.Trim();
+        _values[SettingsStore.PrintShowComplaint] = _printComplaint ? "true" : "false";
+        _values[SettingsStore.PrintShowDiagnosis] = _printDiagnosis ? "true" : "false";
 
         // The rate is left exactly as it was when tax is switched off rather than zeroed, so
         // switching it back on does not mean looking the percentage up again.

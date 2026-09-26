@@ -32,7 +32,7 @@
     <div class="stat">
         <div class="label">Open tickets</div>
         <div class="value">@_openTickets.Count</div>
-        <div class="foot">@_readyCount ready for pickup</div>
+        <div class="foot">@_readyCount ready to go out</div>
     </div>
     <div class="stat owed">
         <div class="label">Still owed</div>
@@ -212,7 +212,8 @@
         _partsLate = parts.Count(p => p.IsOverdue);
 
         _openTickets = Tickets.OpenBoard();
-        _readyCount = _openTickets.Count(t => t.Status == TicketStatus.Ready);
+        // Both finished states are a machine waiting to go out, which is what the tile is counting.
+        _readyCount = _openTickets.Count(t => TicketStatus.IsFinished(t.Status));
 
         _todayAppts = Schedule.ForDay(today);
 

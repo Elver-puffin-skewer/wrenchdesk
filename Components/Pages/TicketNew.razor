@@ -150,10 +150,13 @@
                     <label>Date in</label>
                     <input type="date" @bind="_intakeOn" />
                 </div>
-                <div class="field">
-                    <label>Promised by <span class="muted" style="text-transform:none">(optional)</span></label>
+                @if (_showPromised)
+                {
+                    <div class="field">
+                    <label>@_promisedLabel <span class="muted" style="text-transform:none">(optional)</span></label>
                     <input type="date" @bind="_promisedOn" />
                 </div>
+                }
                 <div class="field">
                     <label>Start as</label>
                     <select @bind="_status">
@@ -194,6 +197,8 @@
     private string _complaint = "";
     private DateTime _intakeOn = DateTime.Today;
     private DateTime? _promisedOn;
+    private bool _showPromised = true;
+    private string _promisedLabel = "Promised by";
     private string _status = TicketStatus.Estimate;
     private bool _taxEnabled = true;
     private int _taxRateBp;
@@ -205,6 +210,10 @@
         // A shop with tax switched off starts every ticket at zero, so nothing has to be
         // remembered or cleared on the ticket afterwards.
         _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
+        _showPromised = Settings.GetBool(SettingsStore.PromisedShow);
+
+        var promisedLabel = Settings.Get(SettingsStore.PromisedLabel);
+        _promisedLabel = string.IsNullOrWhiteSpace(promisedLabel) ? "Promised by" : promisedLabel.Trim();
         _taxRateBp = _taxEnabled ? Settings.GetInt(SettingsStore.TaxRateBp) : 0;
         _taxDisplay = (_taxRateBp / 100m).ToString("0.####");
     }

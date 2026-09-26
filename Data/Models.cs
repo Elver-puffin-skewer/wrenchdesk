@@ -214,13 +214,24 @@ public static class TicketStatus
     public const string InProgress = "In Progress";
     public const string WaitingParts = "Waiting on Parts";
     public const string Ready = "Ready for Pickup";
+
+    /// <summary>
+    /// The same finished state as Ready for Pickup, for a machine the shop is taking out rather
+    /// than one the customer is coming for. Plenty of shops do both, and which it is decides
+    /// whether anybody needs to load a truck.
+    /// </summary>
+    public const string ReadyDelivery = "Ready for Delivery";
+
     public const string Closed = "Closed";
     public const string Declined = "Declined";
 
-    public static readonly string[] All = { Estimate, Approved, InProgress, WaitingParts, Ready, Closed, Declined };
+    public static readonly string[] All = { Estimate, Approved, InProgress, WaitingParts, Ready, ReadyDelivery, Closed, Declined };
 
     /// <summary>Statuses that still need shop attention — drives the dashboard board and the default ticket filter.</summary>
-    public static readonly string[] Open = { Estimate, Approved, InProgress, WaitingParts, Ready };
+    public static readonly string[] Open = { Estimate, Approved, InProgress, WaitingParts, Ready, ReadyDelivery };
+
+    /// <summary>The work is done and the machine is waiting to go, by whichever route.</summary>
+    public static bool IsFinished(string status) => status is Ready or ReadyDelivery;
 
     public static bool IsOpen(string status) => Open.Contains(status);
 
@@ -231,6 +242,7 @@ public static class TicketStatus
         InProgress => "badge-progress",
         WaitingParts => "badge-waiting",
         Ready => "badge-ready",
+        ReadyDelivery => "badge-delivery",
         Closed => "badge-closed",
         Declined => "badge-declined",
         _ => "badge-closed"

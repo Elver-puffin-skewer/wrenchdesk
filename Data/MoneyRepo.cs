@@ -21,25 +21,31 @@ public class MoneyRepo
     public static string Iso(DateTime d) => d.ToString("yyyy-MM-dd");
 
     /// <summary>
-    /// The day a payment counts as takings on.
+    /// The day a payment counts as takings on: the later of the day the work was finished and the
+    /// day the money arrived.
     ///
-    /// The shop reckons a job's money to the week the work was finished, not the week the machine
-    /// came in or the week a deposit happened to be handed over. So a payment against a ticket
-    /// that has been completed counts on that completion date; anything else - a payment on a job
-    /// still open, or money not attached to a ticket at all - counts on the day it was taken,
-    /// because there is no completion date to use and the cash is real either way.
+    /// A job earns its money when both have happened, and either can come first. Somebody who
+    /// pays when they drop the machine off has not earned the shop anything yet - that counts
+    /// when the repair is done. A machine that sits a week on the Ready shelf before the customer
+    /// collects it earns its money on collection day, not on the day it was finished. Taking the
+    /// later of the two is the only rule that puts both where the shop would put them.
+    ///
+    /// A payment on a job with no completion date - a deposit on something still open, or money
+    /// not attached to a ticket at all - counts on the day it was taken. There is nothing else to
+    /// go on, and the cash is real either way.
     ///
     /// Every dated money query goes through this one expression. Two of them working it out
     /// differently is how a dashboard and a report end up disagreeing about the same week.
     /// </summary>
-    private const string RevenueDate = "COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on)";
+    private const string RevenueDate =
+        "MAX(p.paid_on, COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on))";
 
     /// <summary>The join every dated money query needs, since the date now depends on the ticket.</summary>
     private const string RevenueFrom = "FROM payments p LEFT JOIN tickets tk ON tk.id = p.ticket_id";
 
     private const string RowSelect = """
         SELECT p.id, p.amount_cents, p.method, p.reference, p.note, p.paid_on,
-               COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on) AS revenue_on,
+               MAX(p.paid_on, COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on)) AS revenue_on,
                p.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
                              TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')))) AS customer_name,

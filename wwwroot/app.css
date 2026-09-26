@@ -924,3 +924,6 @@ label.check {
 }
 
 label.check input { margin: 0; }
+
+/* Ready for Delivery: finished like Ready for Pickup, but somebody has to load a truck. */
+.badge-delivery { background: #e7f0fb; border-color: #b7cdea; color: #1c4f8b; }

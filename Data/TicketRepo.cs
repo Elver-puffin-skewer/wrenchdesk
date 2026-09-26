@@ -202,7 +202,7 @@ public class TicketRepo
         using var conn = _db.Open();
         var today = Today();
 
-        var completedOn = status is TicketStatus.Ready or TicketStatus.Closed ? today : null;
+        var completedOn = TicketStatus.IsFinished(status) || status == TicketStatus.Closed ? today : null;
         var closedOn = status is TicketStatus.Closed or TicketStatus.Declined ? today : null;
 
         conn.Execute("""

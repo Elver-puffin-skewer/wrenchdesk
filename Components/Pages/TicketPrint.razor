@@ -45,9 +45,9 @@ else
                 <div style="text-align:right;font-size:.95rem;margin-top:.3rem">
                     <div><strong>@_ticket.Number</strong></div>
                     <div>Date in: @FormatIso(_ticket.IntakeOn)</div>
-                    @if (!string.IsNullOrWhiteSpace(_ticket.PromisedOn))
+                    @if (_showPromised && !string.IsNullOrWhiteSpace(_ticket.PromisedOn))
                     {
-                        <div>Promised: @FormatIso(_ticket.PromisedOn)</div>
+                        <div>@_promisedLabel: @FormatIso(_ticket.PromisedOn)</div>
                     }
                 </div>
             </div>
@@ -96,8 +96,10 @@ else
             </div>
         </div>
 
-        @foreach (var machine in _machines.Where(m => !string.IsNullOrWhiteSpace(m.Complaint)
-                                                    || !string.IsNullOrWhiteSpace(m.Diagnosis)))
+        @* What we found / did doubles as the shop's own history and working notes, so whether it
+           goes across the counter is theirs to decide in Settings. *@
+        @foreach (var machine in _machines.Where(m => (_showComplaint && !string.IsNullOrWhiteSpace(m.Complaint))
+                                                    || (_showDiagnosis && !string.IsNullOrWhiteSpace(m.Diagnosis))))
         {
             <div style="margin-bottom:1rem">
                 @if (_machines.Count > 1)
@@ -107,13 +109,13 @@ else
                     </div>
                 }
 
-                @if (!string.IsNullOrWhiteSpace(machine.Complaint))
+                @if (_showComplaint && !string.IsNullOrWhiteSpace(machine.Complaint))
                 {
                     <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Reported problem</h4>
                     <div style="white-space:pre-wrap;margin-bottom:.5rem">@machine.Complaint</div>
                 }
 
-                @if (!string.IsNullOrWhiteSpace(machine.Diagnosis))
+                @if (_showDiagnosis && !string.IsNullOrWhiteSpace(machine.Diagnosis))
                 {
                     <h4 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin:0 0 .25rem">Work performed</h4>
                     <div style="white-space:pre-wrap">@machine.Diagnosis</div>
@@ -230,11 +232,21 @@ else
     private List<TicketLine> _lines = new();
     private TicketTotals _totals = new();
     private Dictionary<string, string> _settings = new();
+    private bool _showComplaint = true;
+    private bool _showDiagnosis = true;
+    private bool _showPromised = true;
+    private string _promisedLabel = "Promised";
     private bool _isInvoice;
 
     protected override void OnParametersSet()
     {
         _settings = Settings.GetAll();
+        _showComplaint = Settings.GetBool(SettingsStore.PrintShowComplaint);
+        _showDiagnosis = Settings.GetBool(SettingsStore.PrintShowDiagnosis);
+        _showPromised = Settings.GetBool(SettingsStore.PromisedShow);
+
+        var label = Settings.Get(SettingsStore.PromisedLabel);
+        _promisedLabel = string.IsNullOrWhiteSpace(label) ? "Promised" : label.Trim();
         _ticket = Tickets.Get(Id);
         if (_ticket is null) return;
 

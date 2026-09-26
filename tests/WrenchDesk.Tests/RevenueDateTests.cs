@@ -54,7 +54,24 @@ public class RevenueDateTests
     }
 
     [Fact]
-    public void Part_payments_across_two_weeks_both_land_on_the_completion_date()
+    public void A_machine_collected_a_week_after_it_was_finished_earns_on_collection_day()
+    {
+        using var h = new TestDb();
+        var customerId = h.NewCustomer();
+
+        // Finished in week A, sat on the Ready shelf, collected and paid for in week B. The shop
+        // was paid in week B and would put the money there; booking it to the week it was merely
+        // ready would credit a week that never saw the cash.
+        var ticketId = h.Tickets.Create(new Ticket { CustomerId = customerId, IntakeOn = "2026-09-14" });
+        Complete(h, ticketId, "2026-09-17");
+        Pay(h, customerId, ticketId, 49500, "2026-09-24");
+
+        Assert.Equal(0, h.Money.TotalInRange(WeekAStart, WeekAEnd));
+        Assert.Equal(49500, h.Money.TotalInRange(WeekBStart, WeekBEnd));
+    }
+
+    [Fact]
+    public void Part_payments_across_two_weeks_land_where_each_was_earned()
     {
         using var h = new TestDb();
         var customerId = h.NewCustomer();

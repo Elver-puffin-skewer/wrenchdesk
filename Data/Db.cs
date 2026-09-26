@@ -524,6 +524,21 @@ public class SettingsStore
     public const string LaborRateCents = "labor.rate_cents";
     public const string TicketPrefix = "ticket.prefix";
     public const string EstimateFooter = "estimate.footer";
+
+    /// <summary>
+    /// Whether the ticket carries a promised-by date, and what it is called. A repair shop does
+    /// not promise a hard date - parts and workload decide it - so a shop can switch the field
+    /// off, or call it what it actually gives the customer.
+    /// </summary>
+    public const string PromisedShow = "ticket.promised_show";
+    public const string PromisedLabel = "ticket.promised_label";
+
+    /// <summary>
+    /// What the printed estimate and invoice carry. "What we found / did" doubles as the shop's
+    /// own history and working notes, which is not always something to hand across the counter.
+    /// </summary>
+    public const string PrintShowComplaint = "print.show_complaint";
+    public const string PrintShowDiagnosis = "print.show_diagnosis";
     public const string WeekStartDay = "week.start_day";
 
     // Backups are off until the shop turns them on and says where they should go.
@@ -591,6 +606,12 @@ public class SettingsStore
         [LaborRateCents] = "6500",
         [TicketPrefix] = "WSE",
         [EstimateFooter] = "Estimate valid for 30 days. Parts and labor may change if additional problems are found.",
+
+        // All on by default: nothing changes for a shop that does not go looking for these.
+        [PromisedShow] = "true",
+        [PromisedLabel] = "Promised by",
+        [PrintShowComplaint] = "true",
+        [PrintShowDiagnosis] = "true",
         [WeekStartDay] = "Monday",
 
         // Off by default — nothing is written on a schedule until the shop asks for it.

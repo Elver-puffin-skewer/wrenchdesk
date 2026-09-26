@@ -33,7 +33,7 @@ else
                     <span> · @_machines.Count machines</span>
                 }
                 <span> · in @FormatIso(_ticket.IntakeOn)</span>
-                @if (!string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · promised @FormatIso(_ticket.PromisedOn)</span> }
+                @if (_showPromised && !string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · promised @FormatIso(_ticket.PromisedOn)</span> }
             </p>
         </div>
         <div class="spacer"></div>
@@ -219,11 +219,14 @@ else
                             so put the real day here if it was not today.
                         </div>
                     </div>
-                    <div class="field">
-                        <label>Promised by</label>
-                        <input type="date" value="@_ticket.PromisedOn" @onchange="e => SetDate(e, d => _ticket!.PromisedOn = d)" />
-                        <div class="muted small" style="margin-top:.2rem">What you told the customer. Prints on the estimate.</div>
-                    </div>
+                    @if (_showPromised)
+                    {
+                        <div class="field">
+                            <label>@_promisedLabel</label>
+                            <input type="date" value="@_ticket.PromisedOn" @onchange="e => SetDate(e, d => _ticket!.PromisedOn = d)" />
+                            <div class="muted small" style="margin-top:.2rem">What you told the customer. Prints on the estimate.</div>
+                        </div>
+                    }
                     @if (ShowTax)
                     {
                         <div class="field">
@@ -680,6 +683,8 @@ else
     private Customer? _customer;
     private List<TicketEquipment> _machines = new();
     private bool _taxEnabled = true;
+    private bool _showPromised = true;
+    private string _promisedLabel = "Promised by";
     private List<Photo> _photos = new();
     private string? _photoError;
     private List<Equipment> _customerEquipment = new();
@@ -721,6 +726,10 @@ else
         _customer = Customers.Get(_ticket.CustomerId);
         _customerEquipment = Customers.EquipmentFor(_ticket.CustomerId, includeArchived: true);
         _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
+        _showPromised = Settings.GetBool(SettingsStore.PromisedShow);
+
+        var promisedLabel = Settings.Get(SettingsStore.PromisedLabel);
+        _promisedLabel = string.IsNullOrWhiteSpace(promisedLabel) ? "Promised by" : promisedLabel.Trim();
         _machines = Tickets.Machines(Id);
         _photos = Photos.ForTicket(Id);
 

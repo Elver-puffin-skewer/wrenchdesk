@@ -189,3 +189,119 @@ public class PrintLabelTests
         Assert.Equal("Labor", new TicketLine { Kind = "Labor", Description = "   " }.PrintLabel);
     }
 }
+
+/// <summary>
+/// A machine the shop is taking out rather than one the customer is coming for. Finished either
+/// way, but which it is decides whether anybody needs to load a truck.
+/// </summary>
+public class ReadyForDeliveryTests
+{
+    [Fact]
+    public void It_is_offered_alongside_the_other_statuses()
+    {
+        Assert.Contains(TicketStatus.ReadyDelivery, TicketStatus.All);
+    }
+
+    [Fact]
+    public void It_counts_as_a_ticket_still_needing_attention()
+    {
+        // The machine is still on the shop floor until somebody delivers it.
+        Assert.True(TicketStatus.IsOpen(TicketStatus.ReadyDelivery));
+        Assert.True(TicketStatus.IsFinished(TicketStatus.ReadyDelivery));
+        Assert.True(TicketStatus.IsFinished(TicketStatus.Ready));
+        Assert.False(TicketStatus.IsFinished(TicketStatus.WaitingParts));
+    }
+
+    [Fact]
+    public void Moving_to_it_stamps_the_day_the_work_was_finished()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+
+        h.Tickets.SetStatus(ticketId, TicketStatus.ReadyDelivery);
+
+        var ticket = h.Tickets.Get(ticketId)!;
+        Assert.Equal(TicketStatus.ReadyDelivery, ticket.Status);
+        Assert.Equal(DateTime.Now.ToString("yyyy-MM-dd"), ticket.CompletedOn);
+    }
+
+    [Fact]
+    public void It_shows_up_on_the_open_board_and_in_a_search_by_status()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+        h.Tickets.SetStatus(ticketId, TicketStatus.ReadyDelivery);
+
+        Assert.Contains(h.Tickets.OpenBoard(), t => t.Id == ticketId);
+        Assert.Contains(h.Tickets.Search(null, TicketStatus.ReadyDelivery, openOnly: false), t => t.Id == ticketId);
+    }
+
+    [Fact]
+    public void Its_money_is_earned_the_same_way_a_pickup_is()
+    {
+        using var h = new TestDb();
+        var customerId = h.NewCustomer();
+        var ticketId = h.Tickets.Create(new Ticket { CustomerId = customerId, IntakeOn = "2026-09-14" });
+
+        // Paid at drop-off, delivered later: the takings belong to the week it went out.
+        h.Money.Insert(new Payment { CustomerId = customerId, TicketId = ticketId, AmountCents = 20000, Method = "Cash", PaidOn = "2026-09-16" });
+        var ticket = h.Tickets.Get(ticketId)!;
+        ticket.CompletedOn = "2026-09-24";
+        h.Tickets.Update(ticket);
+
+        Assert.Equal(0, h.Money.TotalInRange(new DateTime(2026, 9, 14), new DateTime(2026, 9, 20)));
+        Assert.Equal(20000, h.Money.TotalInRange(new DateTime(2026, 9, 21), new DateTime(2026, 9, 27)));
+    }
+}
+
+/// <summary>
+/// What the shop keeps for itself and what goes across the counter are not the same thing.
+/// </summary>
+public class PrintingPreferenceTests
+{
+    [Fact]
+    public void Everything_prints_unless_a_shop_says_otherwise()
+    {
+        using var h = new TestDb();
+
+        Assert.True(h.Settings.GetBool(SettingsStore.PrintShowComplaint));
+        Assert.True(h.Settings.GetBool(SettingsStore.PrintShowDiagnosis));
+        Assert.True(h.Settings.GetBool(SettingsStore.PromisedShow));
+        Assert.Equal("Promised by", h.Settings.Get(SettingsStore.PromisedLabel));
+    }
+
+    [Fact]
+    public void A_shop_can_keep_its_own_write_up_off_the_customers_copy()
+    {
+        using var h = new TestDb();
+        h.Settings.Set(SettingsStore.PrintShowDiagnosis, "false");
+
+        Assert.False(h.Settings.GetBool(SettingsStore.PrintShowDiagnosis));
+        Assert.True(h.Settings.GetBool(SettingsStore.PrintShowComplaint));
+    }
+
+    [Fact]
+    public void Turning_the_promised_date_off_keeps_the_dates_already_saved()
+    {
+        using var h = new TestDb();
+        var ticketId = h.NewTicket(h.NewCustomer());
+
+        var ticket = h.Tickets.Get(ticketId)!;
+        ticket.PromisedOn = "2026-10-02";
+        h.Tickets.Update(ticket);
+
+        h.Settings.Set(SettingsStore.PromisedShow, "false");
+
+        // Hidden, not deleted - it comes back if they switch it on again.
+        Assert.Equal("2026-10-02", h.Tickets.Get(ticketId)!.PromisedOn);
+    }
+
+    [Fact]
+    public void A_shop_can_call_it_something_other_than_promised()
+    {
+        using var h = new TestDb();
+        h.Settings.Set(SettingsStore.PromisedLabel, "Best case");
+
+        Assert.Equal("Best case", h.Settings.Get(SettingsStore.PromisedLabel));
+    }
+}
