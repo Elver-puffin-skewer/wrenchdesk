@@ -22,18 +22,45 @@ else
                 <span class="mono">@_ticket.Number</span>
                 <StatusBadge Status="@_ticket.Status" />
             </h1>
+            @* Read across a counter with the customer standing there, so the name and the number
+               they are asked to confirm are the two biggest things on it - and the number is here
+               rather than a page away. *@
+            <div class="ticket-who">
+                <a class="who-name" href="@($"/customers/{_ticket.CustomerId}")">
+                    @(_customer?.DisplayName ?? "Customer")
+                </a>
+
+                @if (_customer is not null)
+                {
+                    @if (!string.IsNullOrWhiteSpace(_customer.Phone))
+                    {
+                        <a class="who-phone" href="@($"tel:{DigitsOf(_customer.Phone)}")"
+                           title="Call this number">@_customer.Phone</a>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_customer.PhoneAlt))
+                    {
+                        <a class="who-phone alt" href="@($"tel:{DigitsOf(_customer.PhoneAlt)}")"
+                           title="Second number">@_customer.PhoneAlt</a>
+                    }
+                }
+            </div>
+
             <p class="sub">
-                <a href="@($"/customers/{_ticket.CustomerId}")">@(_customer?.DisplayName ?? "Customer")</a>
+                @if (_customer is not null && _customer.HasAddress)
+                {
+                    <span>@_customer.OneLineAddress · </span>
+                }
                 @if (_machines.Count == 1 && _machines[0].EquipmentId is not null)
                 {
-                    <span> · @_machines[0].DisplayName</span>
+                    <span>@_machines[0].DisplayName · </span>
                 }
                 else if (_machines.Count > 1)
                 {
-                    <span> · @_machines.Count machines</span>
+                    <span>@_machines.Count machines · </span>
                 }
-                <span> · in @FormatIso(_ticket.IntakeOn)</span>
-                @if (_showPromised && !string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · promised @FormatIso(_ticket.PromisedOn)</span> }
+                <span>in @FormatIso(_ticket.IntakeOn)</span>
+                @if (_showPromised && !string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · @_promisedLabel.ToLowerInvariant() @FormatIso(_ticket.PromisedOn)</span> }
+                @if (!string.IsNullOrWhiteSpace(_customer?.Email)) { <span> · <a href="@($"mailto:{_customer.Email}")">@_customer.Email</a></span> }
             </p>
         </div>
         <div class="spacer"></div>
@@ -920,6 +947,10 @@ else
     }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>Digits only, so a tel: link works however the number was typed at the counter.</summary>
+    private static string DigitsOf(string? phone) =>
+        new string((phone ?? "").Where(char.IsDigit).ToArray());
 
     // ---- Photos ----
 

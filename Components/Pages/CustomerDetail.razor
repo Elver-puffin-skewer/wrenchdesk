@@ -283,9 +283,12 @@ else
             </div>
 
             <div class="field">
-                <label>Keep this customer instead</label>
-                <input type="search" placeholder="Search for the record to keep…"
+                <label>Which other records are the same person?</label>
+                <input type="search" placeholder="Search by name, phone, address…"
                        value="@_mergeQuery" @oninput="OnMergeSearch" />
+                <div class="muted small" style="margin-top:.2rem">
+                    Tick every duplicate. Somebody entered three times can be tidied up in one go.
+                </div>
             </div>
 
             @if (_mergeMatches.Count > 0)
@@ -293,16 +296,18 @@ else
                 <div class="table-wrap" style="border:1px solid var(--line);border-radius:6px">
                     <table class="data">
                         <tbody>
-                            @foreach (var candidate in _mergeMatches.Take(8))
+                            @foreach (var candidate in _mergeMatches.Take(10))
                             {
-                                var target = candidate;
-                                <tr style="cursor:pointer" @onclick="() => _mergeTarget = target">
+                                var row = candidate;
+                                <tr style="cursor:pointer" @onclick="() => ToggleDuplicate(row)">
                                     <td class="shrink">
-                                        <input type="radio" checked="@(_mergeTarget?.Id == target.Id)" />
+                                        <input type="checkbox" checked="@_mergeSelected.Contains(row.Id)"
+                                               @onchange="() => ToggleDuplicate(row)"
+                                               @onclick:stopPropagation="true" />
                                     </td>
-                                    <td class="strong">@target.DisplayName</td>
-                                    <td class="tnum small">@target.Phone</td>
-                                    <td class="muted small">@target.City</td>
+                                    <td class="strong">@row.DisplayName</td>
+                                    <td class="tnum small">@row.Phone</td>
+                                    <td class="muted small">@row.City</td>
                                 </tr>
                             }
                         </tbody>
@@ -310,12 +315,31 @@ else
                 </div>
             }
 
-            @if (_mergeTarget is not null)
+            @if (_mergeSelected.Count > 0)
             {
-                <div class="alert alert-warn" style="margin-top:1rem;margin-bottom:0">
-                    Everything above moves to <strong>@_mergeTarget.DisplayName</strong>, and
-                    <strong>@_customer.DisplayName</strong> is removed. Any detail filled in here but
-                    blank there — a phone number, an address — is carried across rather than dropped.
+                <div class="field" style="margin-top:1rem">
+                    <label>Which one do you want to keep?</label>
+                    @foreach (var option in MergeGroup())
+                    {
+                        var pick = option;
+                        <label class="check" style="margin-bottom:.2rem">
+                            <input type="radio" name="mergeKeep" checked="@(_keepId == pick.Id)"
+                                   @onchange="() => _keepId = pick.Id" />
+                            <span>
+                                <strong>@pick.DisplayName</strong>
+                                @if (!string.IsNullOrWhiteSpace(pick.Phone)) { <span class="muted small"> · @pick.Phone</span> }
+                                @if (pick.Id == Id) { <span class="muted small"> · the record you are on</span> }
+                            </span>
+                        </label>
+                    }
+                </div>
+
+                <div class="alert alert-warn" style="margin-bottom:0">
+                    <strong>@RemovedNames()</strong>
+                    @(_mergeSelected.Count > 1 ? " will be merged into " : " will be merged into ")
+                    <strong>@KeptName()</strong> and removed. Tickets, machines, payments and scheduled
+                    stops all move across, and any detail filled in on a duplicate but blank on the one
+                    you keep — a phone number, an address — is carried over rather than dropped.
                 </div>
             }
 
@@ -341,16 +365,31 @@ else
 
             @if (_canDelete)
             {
-                <button class="btn btn-danger" @onclick="DeleteCustomer">Delete this record</button>
+                @if (_confirmDelete)
+                {
+                    <span class="muted small" style="align-self:center">
+                        Delete @_customer.DisplayName for good?
+                    </span>
+                    <button class="btn" @onclick="() => _confirmDelete = false">No, keep it</button>
+                    <button class="btn btn-danger" @onclick="DeleteCustomer">Yes, delete it</button>
+                }
+                else
+                {
+                    <button class="btn btn-danger" @onclick="() => _confirmDelete = true">Delete this record</button>
+                }
             }
             else
             {
                 <button class="btn" @onclick="ArchiveCustomer">Archive instead</button>
             }
 
-            <button class="btn btn-primary" @onclick="DoMerge" disabled="@(_mergeTarget is null)">
-                Merge into the one I picked
-            </button>
+            @if (!_confirmDelete)
+            {
+                <button class="btn btn-primary" @onclick="DoMerge"
+                        disabled="@(_mergeSelected.Count == 0 || _keepId is null)">
+                    @(_mergeSelected.Count > 1 ? $"Merge these {_mergeSelected.Count + 1} records" : "Merge them")
+                </button>
+            }
         </Footer>
     </Modal>
 }
@@ -434,7 +473,9 @@ else
     private bool _mergeOpen;
     private string _mergeQuery = "";
     private List<Customer> _mergeMatches = new();
-    private Customer? _mergeTarget;
+    private readonly HashSet<long> _mergeSelected = new();
+    private long? _keepId;
+    private bool _confirmDelete;
     private string? _mergeError;
     private bool _canDelete;
     private (int Tickets, int Equipment, int Payments, int Appointments) _mergeCounts;
@@ -442,7 +483,17 @@ else
     private bool _equipmentModalOpen;
     private Equipment _editEquipment = new();
 
-    protected override void OnParametersSet() => Load();
+    protected override void OnParametersSet()
+    {
+        // The router reuses this component when only the id changes, so anything left open from
+        // the record before would otherwise still be sitting over the new one.
+        _mergeOpen = false;
+        _mergeError = null;
+        _confirmDelete = false;
+        _mergeSelected.Clear();
+
+        Load();
+    }
 
     private void Load()
     {
@@ -462,7 +513,9 @@ else
         _mergeError = null;
         _mergeQuery = "";
         _mergeMatches = new();
-        _mergeTarget = null;
+        _mergeSelected.Clear();
+        _keepId = Id;
+        _confirmDelete = false;
 
         _mergeCounts = Customers.MergePreview(Id);
         _canDelete = _mergeCounts.Tickets == 0 && _mergeCounts.Payments == 0;
@@ -480,18 +533,49 @@ else
             : Customers.Search(_mergeQuery, includeArchived: true).Where(c => c.Id != Id).ToList();
     }
 
+    /// <summary>The whole set being merged: this record plus every duplicate ticked.</summary>
+    private List<Customer> MergeGroup()
+    {
+        var group = new List<Customer>();
+        if (_customer is not null) group.Add(_customer);
+
+        group.AddRange(_mergeMatches.Where(m => _mergeSelected.Contains(m.Id)));
+        return group;
+    }
+
+    private string KeptName() =>
+        MergeGroup().FirstOrDefault(c => c.Id == _keepId)?.DisplayName ?? "the one you pick";
+
+    private string RemovedNames() =>
+        string.Join(", ", MergeGroup().Where(c => c.Id != _keepId).Select(c => c.DisplayName));
+
+    private void ToggleDuplicate(Customer candidate)
+    {
+        if (!_mergeSelected.Add(candidate.Id)) _mergeSelected.Remove(candidate.Id);
+
+        // The one being kept must stay part of the set it is being kept out of.
+        if (_keepId is not null && _keepId != Id && !_mergeSelected.Contains(_keepId.Value))
+            _keepId = Id;
+    }
+
     private void DoMerge()
     {
-        if (_mergeTarget is null) return;
+        if (_keepId is null) return;
 
-        var problem = Customers.Merge(Id, _mergeTarget.Id);
+        var sources = MergeGroup().Select(c => c.Id).Where(id => id != _keepId.Value).ToList();
+        if (sources.Count == 0) return;
+
+        var problem = Customers.MergeMany(sources, _keepId.Value);
         if (problem is not null)
         {
             _mergeError = problem;
             return;
         }
 
-        Nav.NavigateTo($"/customers/{_mergeTarget.Id}");
+        // Closed before navigating: the page is the same component with a different id, so a modal
+        // left open would still be sitting there over the record that was just merged into.
+        _mergeOpen = false;
+        Nav.NavigateTo($"/customers/{_keepId.Value}");
     }
 
     private void DeleteCustomer()
@@ -500,9 +584,11 @@ else
         if (problem is not null)
         {
             _mergeError = problem;
+            _confirmDelete = false;
             return;
         }
 
+        _mergeOpen = false;
         Nav.NavigateTo("/customers");
     }
 

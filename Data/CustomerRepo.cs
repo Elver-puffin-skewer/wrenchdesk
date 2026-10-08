@@ -141,19 +141,47 @@ public class CustomerRepo
     /// both records neither can simply be deleted without losing history. All of it happens in one
     /// transaction, so a failure half way leaves both records exactly as they were.
     /// </summary>
-    public string? Merge(long fromId, long intoId)
+    public string? Merge(long fromId, long intoId) => MergeMany(new[] { fromId }, intoId);
+
+    /// <summary>
+    /// Folds several duplicates into the one being kept, all in a single transaction.
+    ///
+    /// Somebody entered three times takes three records to tidy up, and doing them one at a time
+    /// means three chances to pick the wrong survivor. Either the whole set moves across or none
+    /// of it does.
+    /// </summary>
+    public string? MergeMany(IEnumerable<long> fromIds, long intoId)
+    {
+        var sources = fromIds.Distinct().Where(id => id != intoId).ToList();
+        if (sources.Count == 0) return "Pick at least one other record to merge in.";
+
+        using var conn = _db.Open();
+        using var tx = conn.BeginTransaction(deferred: false);
+
+        var into = conn.QuerySingleOrDefault<Customer>(
+            "SELECT * FROM customers WHERE id = @intoId;", new { intoId }, tx);
+        if (into is null) return "The customer to keep no longer exists.";
+
+        foreach (var fromId in sources)
+        {
+            var problem = MergeOne(conn, tx, fromId, intoId);
+            if (problem is not null) return problem;
+        }
+
+        tx.Commit();
+        return null;
+    }
+
+    /// <summary>One duplicate folded into the survivor, inside a transaction the caller owns.</summary>
+    private static string? MergeOne(Microsoft.Data.Sqlite.SqliteConnection conn,
+        Microsoft.Data.Sqlite.SqliteTransaction tx, long fromId, long intoId)
     {
         if (fromId == intoId) return "That is the same customer.";
 
-        using var conn = _db.Open();
+        var from = conn.QuerySingleOrDefault<Customer>(
+            "SELECT * FROM customers WHERE id = @fromId;", new { fromId }, tx);
 
-        var from = conn.QuerySingleOrDefault<Customer>("SELECT * FROM customers WHERE id = @fromId;", new { fromId });
-        var into = conn.QuerySingleOrDefault<Customer>("SELECT * FROM customers WHERE id = @intoId;", new { intoId });
-
-        if (from is null) return "The duplicate no longer exists.";
-        if (into is null) return "The customer to keep no longer exists.";
-
-        using var tx = conn.BeginTransaction();
+        if (from is null) return "One of the duplicates no longer exists.";
 
         conn.Execute("UPDATE equipment    SET customer_id = @intoId WHERE customer_id = @fromId;", new { fromId, intoId }, tx);
         conn.Execute("UPDATE tickets      SET customer_id = @intoId WHERE customer_id = @fromId;", new { fromId, intoId }, tx);
@@ -180,11 +208,10 @@ public class CustomerRepo
         {
             from.Phone, from.PhoneAlt, from.Email, from.Address1, from.Address2,
             from.City, from.State, from.Zip, from.BusinessName, from.Notes,
-            intoId, now = NowUtc()
+            intoId, now = DateTime.UtcNow.ToString("O")
         }, tx);
 
         conn.Execute("DELETE FROM customers WHERE id = @fromId;", new { fromId }, tx);
-        tx.Commit();
 
         return null;
     }

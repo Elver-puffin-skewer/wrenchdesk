@@ -927,3 +927,42 @@ label.check input { margin: 0; }
 
 /* Ready for Delivery: finished like Ready for Pickup, but somebody has to load a truck. */
 .badge-delivery { background: #e7f0fb; border-color: #b7cdea; color: #1c4f8b; }
+
+/* ---- Who the ticket is for --------------------------------------------- */
+/* Read across a counter with the customer in front of you: the name and the number they are
+   asked to confirm are the two things worth being big, and the number is on the ticket rather
+   than a page away. */
+
+.ticket-who {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .25rem .9rem;
+    margin: .1rem 0 .15rem;
+}
+
+.ticket-who .who-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--navy);
+    text-decoration: none;
+}
+
+.ticket-who .who-name:hover { text-decoration: underline; }
+
+.ticket-who .who-phone {
+    font-size: 1.15rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ticket-who .who-phone:hover { text-decoration: underline; }
+.ticket-who .who-phone.alt { font-size: 1rem; font-weight: 500; color: var(--ink-3); }
+
+@media print {
+    /* The printed copy has its own header block; this is for the screen. */
+    .ticket-who .who-phone { font-weight: 500; }
+}
