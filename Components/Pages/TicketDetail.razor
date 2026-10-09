@@ -32,16 +32,8 @@ else
 
                 @if (_customer is not null)
                 {
-                    @if (!string.IsNullOrWhiteSpace(_customer.Phone))
-                    {
-                        <a class="who-phone" href="@($"tel:{DigitsOf(_customer.Phone)}")"
-                           title="Call this number">@_customer.Phone</a>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(_customer.PhoneAlt))
-                    {
-                        <a class="who-phone alt" href="@($"tel:{DigitsOf(_customer.PhoneAlt)}")"
-                           title="Second number">@_customer.PhoneAlt</a>
-                    }
+                    <PhoneNumber Number="@_customer.Phone" CssClass="who-phone" />
+                    <PhoneNumber Number="@_customer.PhoneAlt" CssClass="who-phone alt" />
                 }
             </div>
 
@@ -948,9 +940,6 @@ else
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    /// <summary>Digits only, so a tel: link works however the number was typed at the counter.</summary>
-    private static string DigitsOf(string? phone) =>
-        new string((phone ?? "").Where(char.IsDigit).ToArray());
 
     // ---- Photos ----
 

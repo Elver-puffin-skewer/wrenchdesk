@@ -966,3 +966,31 @@ label.check input { margin: 0; }
     /* The printed copy has its own header block; this is for the screen. */
     .ticket-who .who-phone { font-weight: 500; }
 }
+
+/* ---- Dialling ---------------------------------------------------------- */
+/* The number itself is plain text everywhere: a tel: link on a desktop only produces Windows'
+   "select an app to open this 'tel' link" and an empty window, and the number sits where people
+   are working, so it gets clicked by accident. The dial button appears only where tapping to
+   call actually does something - a phone, or the tablet at the bench. */
+
+.phone-dial {
+    display: none;
+    margin-left: .3rem;
+    text-decoration: none;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+@media (pointer: coarse) {
+    .phone-dial {
+        display: inline-block;
+        /* A finger-sized target, since this one is meant to be tapped. */
+        min-width: 2.2rem;
+        padding: .25rem .4rem;
+        text-align: center;
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        background: var(--card);
+        vertical-align: middle;
+    }
+}

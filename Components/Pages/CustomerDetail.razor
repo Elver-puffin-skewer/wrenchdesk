@@ -58,11 +58,11 @@ else
                 <dl class="kv">
                     <dt>Phone</dt>
                     <dd>
-                        @if (string.IsNullOrWhiteSpace(_customer.Phone)) { <span class="muted">—</span> }
-                        else { <a href="tel:@_customer.Phone">@_customer.Phone</a> }
+                        <PhoneNumber Number="@_customer.Phone" ShowDash="true" />
                         @if (!string.IsNullOrWhiteSpace(_customer.PhoneAlt))
                         {
-                            <span class="muted"> · alt </span><a href="tel:@_customer.PhoneAlt">@_customer.PhoneAlt</a>
+                            <span class="muted"> · alt </span>
+                            <PhoneNumber Number="@_customer.PhoneAlt" />
                         }
                     </dd>
 

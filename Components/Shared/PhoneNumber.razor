@@ -1,0 +1,40 @@
+@*
+    A phone number on screen.
+
+    Shown as plain text, not as a link. A tel: link on the shop PC does nothing useful - Windows
+    puts up "select an app to open this 'tel' link" and whichever you pick opens an empty window -
+    and the number sits right where somebody is working, so it gets clicked by accident. Plain
+    text also stays selectable, which is what you want when copying a number into a phone.
+
+    The dial button beside it only appears on a device that is actually touched - a phone or the
+    tablet at the bench - where tapping to call is the whole point. A mouse never sees it.
+*@
+
+@if (!string.IsNullOrWhiteSpace(Number))
+{
+    <span class="@CssClass">@Number</span>
+
+    @if (Digits.Length >= 7)
+    {
+        <a class="phone-dial" href="@($"tel:{Digits}")"
+           title="@($"Call {Number}")" aria-label="@($"Call {Number}")">📞</a>
+    }
+}
+else if (ShowDash)
+{
+    <span class="muted">—</span>
+}
+
+@code {
+    /// <summary>The number as the shop typed it. Shown exactly that way.</summary>
+    [Parameter] public string? Number { get; set; }
+
+    /// <summary>Class for the number itself, so each screen can size it its own way.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Whether a blank number shows an em dash or nothing at all.</summary>
+    [Parameter] public bool ShowDash { get; set; }
+
+    /// <summary>Digits only, so dialling works however the number was punctuated.</summary>
+    private string Digits => new string((Number ?? "").Where(char.IsDigit).ToArray());
+}
