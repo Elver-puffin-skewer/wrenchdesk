@@ -44,7 +44,7 @@ public class MoneyRepo
     private const string RevenueFrom = "FROM payments p LEFT JOIN tickets tk ON tk.id = p.ticket_id";
 
     private const string RowSelect = """
-        SELECT p.id, p.amount_cents, p.method, p.reference, p.note, p.paid_on,
+        SELECT p.id, p.amount_cents, p.method, p.reference, p.note, p.paid_on, p.taken_by,
                MAX(p.paid_on, COALESCE(NULLIF(TRIM(tk.completed_on), ''), p.paid_on)) AS revenue_on,
                p.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
@@ -86,15 +86,16 @@ public class MoneyRepo
         return conn.QuerySingleOrDefault<Payment>("SELECT * FROM payments WHERE id = @id;", new { id });
     }
 
-    public long Insert(Payment p)
+    public long Insert(Payment p, string? by = null)
     {
         using var conn = _db.Open();
         p.CreatedUtc = NowUtc();
         if (string.IsNullOrWhiteSpace(p.PaidOn)) p.PaidOn = Iso(DateTime.Now);
+        if (!string.IsNullOrWhiteSpace(by)) p.TakenBy = by.Trim();
 
         return conn.ExecuteScalar<long>("""
-            INSERT INTO payments (customer_id, ticket_id, amount_cents, method, reference, note, paid_on, created_utc)
-            VALUES (@CustomerId, @TicketId, @AmountCents, @Method, @Reference, @Note, @PaidOn, @CreatedUtc);
+            INSERT INTO payments (customer_id, ticket_id, amount_cents, method, reference, note, paid_on, created_utc, taken_by)
+            VALUES (@CustomerId, @TicketId, @AmountCents, @Method, @Reference, @Note, @PaidOn, @CreatedUtc, @TakenBy);
             SELECT last_insert_rowid();
             """, p);
     }

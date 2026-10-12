@@ -25,6 +25,7 @@ public class TicketRepo
     // pressure washer reads as one row in the list rather than hiding the second machine.
     private const string RowSelect = """
         SELECT tk.id, tk.number, tk.status, tk.intake_on, tk.promised_on,
+               tk.created_by, tk.updated_by,
                tk.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
                              TRIM(c.first_name || ' ' || c.last_name))) AS customer_name,
@@ -148,8 +149,11 @@ public class TicketRepo
     /// number would then catch the collision, but as an exception in the middle of writing up a
     /// customer's machine. Taking the lock at the start makes the second one wait its turn.
     /// </summary>
-    public long Create(Ticket t)
+    public long Create(Ticket t, string? by = null)
     {
+        t.CreatedBy = (by ?? "").Trim();
+        t.UpdatedBy = t.CreatedBy;
+
         // Read before opening the transaction: this reaches for a connection of its own, and a
         // second connection used inside a held write lock is how a deadlock gets built.
         var prefix = _settings.Get(SettingsStore.TicketPrefix);
@@ -172,10 +176,12 @@ public class TicketRepo
         var id = conn.ExecuteScalar<long>("""
             INSERT INTO tickets
                 (number, customer_id, status, notes,
-                 tax_rate_bp, intake_on, promised_on, completed_on, closed_on, created_utc, updated_utc)
+                 tax_rate_bp, intake_on, promised_on, completed_on, closed_on, created_utc, updated_utc,
+                 created_by, updated_by)
             VALUES
                 (@Number, @CustomerId, @Status, @Notes,
-                 @TaxRateBp, @IntakeOn, @PromisedOn, @CompletedOn, @ClosedOn, @CreatedUtc, @UpdatedUtc);
+                 @TaxRateBp, @IntakeOn, @PromisedOn, @CompletedOn, @ClosedOn, @CreatedUtc, @UpdatedUtc,
+                 @CreatedBy, @UpdatedBy);
             SELECT last_insert_rowid();
             """, t, tx);
 
@@ -183,21 +189,26 @@ public class TicketRepo
         return id;
     }
 
-    public void Update(Ticket t)
+    public void Update(Ticket t, string? by = null)
     {
         using var conn = _db.Open();
         t.UpdatedUtc = NowUtc();
+
+        // A blank name leaves whoever it was last time, rather than erasing it - a screen that
+        // forgot to say who it was should not wipe out the answer.
+        if (!string.IsNullOrWhiteSpace(by)) t.UpdatedBy = by.Trim();
         conn.Execute("""
             UPDATE tickets SET
                 customer_id = @CustomerId, status = @Status, notes = @Notes,
                 tax_rate_bp = @TaxRateBp, intake_on = @IntakeOn, promised_on = @PromisedOn,
-                completed_on = @CompletedOn, closed_on = @ClosedOn, updated_utc = @UpdatedUtc
+                completed_on = @CompletedOn, closed_on = @ClosedOn, updated_utc = @UpdatedUtc,
+                updated_by = @UpdatedBy
             WHERE id = @Id;
             """, t);
     }
 
     /// <summary>Moves a ticket's status and stamps the matching date so reports have something to sort on.</summary>
-    public void SetStatus(long id, string status)
+    public void SetStatus(long id, string status, string? by = null)
     {
         using var conn = _db.Open();
         var today = Today();
@@ -211,9 +222,10 @@ public class TicketRepo
                 completed_on = CASE WHEN @completedOn IS NOT NULL AND completed_on IS NULL
                                     THEN @completedOn ELSE completed_on END,
                 closed_on    = CASE WHEN @closedOn IS NOT NULL THEN @closedOn ELSE closed_on END,
-                updated_utc  = @now
+                updated_utc  = @now,
+                updated_by   = CASE WHEN TRIM(@by) <> '' THEN @by ELSE updated_by END
             WHERE id = @id;
-            """, new { id, status, completedOn, closedOn, now = NowUtc() });
+            """, new { id, status, completedOn, closedOn, now = NowUtc(), by = (by ?? "").Trim() });
     }
 
     public void Delete(long id)

@@ -2,6 +2,8 @@
 @inject CustomerRepo Customers
 @inject TicketRepo Tickets
 @inject SettingsStore Settings
+@inject CurrentUser Me
+@inject AuditWriter Audit
 @inject NavigationManager Nav
 
 <PageTitle>New Ticket — WrenchDesk</PageTitle>
@@ -201,11 +203,18 @@
     private string _promisedLabel = "Promised by";
     private string _status = TicketStatus.Estimate;
     private bool _taxEnabled = true;
+    private string _meName = "";
     private int _taxRateBp;
     private string _taxDisplay = "0";
     private string? _error;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
+    {
+        _meName = (await Me.GetAsync()).Name;
+        Start();
+    }
+
+    private void Start()
     {
         // A shop with tax switched off starts every ticket at zero, so nothing has to be
         // remembered or cleared on the ticket afterwards.
@@ -275,7 +284,7 @@
             : 0;
     }
 
-    private void Create()
+    private async Task Create()
     {
         if (_customer is null)
         {
@@ -292,7 +301,8 @@
             PromisedOn = _promisedOn?.ToString("yyyy-MM-dd")
         };
 
-        var id = Tickets.Create(ticket);
+        var id = Tickets.Create(ticket, _meName);
+        await Audit.WriteAsync("Wrote up a ticket", AuditEntity.Ticket, id, Tickets.Get(id)?.Number ?? "");
 
         // The complaint typed at intake belongs to the first machine. With several ticked it is
         // usually about all of them, so it starts on the first and can be split on the ticket.

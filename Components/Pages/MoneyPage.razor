@@ -3,6 +3,7 @@
 @inject CustomerRepo Customers
 @inject SettingsStore Settings
 @inject CurrentUser Me
+@inject AuditWriter Audit
 @inject NavigationManager Nav
 
 <PageTitle>Money — WrenchDesk</PageTitle>
@@ -313,6 +314,8 @@
 }
 
 @code {
+    private string _meName = "";
+
     private DateTime _from = DateTime.Today.AddDays(-30);
     private DateTime _to = DateTime.Today;
 
@@ -342,6 +345,7 @@
             return;
         }
 
+        _meName = (await Me.GetAsync()).Name;
         Load();
     }
 
@@ -443,7 +447,7 @@
         _editing.AmountCents = cents;
         _editing.PaidOn = _payDate.ToString("yyyy-MM-dd");
 
-        if (_editing.Id == 0) Repo.Insert(_editing);
+        if (_editing.Id == 0) Repo.Insert(_editing, _meName);
         else Repo.Update(_editing);
 
         _paymentModalOpen = false;

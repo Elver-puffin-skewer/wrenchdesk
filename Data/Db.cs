@@ -511,6 +511,17 @@ public class Db
             detail     TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX ix_audit_at ON audit_log(at_utc DESC);
+        """,
+
+        // 7 -> 8: whose work this was
+        """
+        -- Names rather than account ids, for the same reason the log copies the name in: the
+        -- answer to "who took this money" must survive that person leaving and their account
+        -- going with them. Blank on everything written before this, which is honest - the shop
+        -- did not record it then and guessing would be worse.
+        ALTER TABLE tickets  ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
+        ALTER TABLE tickets  ADD COLUMN updated_by TEXT NOT NULL DEFAULT '';
+        ALTER TABLE payments ADD COLUMN taken_by   TEXT NOT NULL DEFAULT '';
         """
     };
 }

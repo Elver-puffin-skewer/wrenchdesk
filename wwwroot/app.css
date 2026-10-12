@@ -1086,3 +1086,21 @@ label.check input { margin: 0; }
 }
 
 .whoami button:hover { opacity: 1; }
+
+/* ---- A record's own history -------------------------------------------- */
+
+.history { list-style: none; margin: 0; padding: 0; }
+
+.history li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .7rem;
+    padding: .3rem 0;
+    border-bottom: 1px dashed var(--line-2);
+    font-size: .85rem;
+}
+
+.history li:last-child { border-bottom: 0; }
+.history .when { color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 8.5rem; }
+.history .what { flex: 1; }
+.history .who { font-weight: 600; }

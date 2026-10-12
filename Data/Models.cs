@@ -118,6 +118,12 @@ public class Ticket
     /// <summary>Tax rate in basis points: 725 == 7.25%. Snapshotted per ticket so old records keep their rate.</summary>
     public int TaxRateBp { get; set; }
 
+    /// <summary>Who wrote this ticket up, by name. Blank on anything from before accounts existed.</summary>
+    public string CreatedBy { get; set; } = "";
+
+    /// <summary>Who last changed it.</summary>
+    public string UpdatedBy { get; set; } = "";
+
     public string IntakeOn { get; set; } = "";
     public string? PromisedOn { get; set; }
     public string? CompletedOn { get; set; }
@@ -366,6 +372,9 @@ public class Payment
 
     public string CreatedUtc { get; set; } = "";
 
+    /// <summary>Who took the money, by name. The one most worth being able to answer for.</summary>
+    public string TakenBy { get; set; } = "";
+
     public static readonly string[] Methods = { "Cash", "Check", "Card", "Transfer", "Other" };
 }
 
@@ -441,6 +450,10 @@ public class TicketRow
     public string Complaint { get; set; } = "";
     public string IntakeOn { get; set; } = "";
     public string? PromisedOn { get; set; }
+
+    /// <summary>Who wrote the ticket up, and who last changed it. Blank on anything from before accounts.</summary>
+    public string CreatedBy { get; set; } = "";
+    public string UpdatedBy { get; set; } = "";
     public long CustomerId { get; set; }
     public string CustomerName { get; set; } = "";
     public long? EquipmentId { get; set; }
@@ -520,6 +533,9 @@ public class PaymentRow
     public string CustomerName { get; set; } = "";
     public long? TicketId { get; set; }
     public string TicketNumber { get; set; } = "";
+
+    /// <summary>Who took it, by name. Blank on anything recorded before accounts existed.</summary>
+    public string TakenBy { get; set; } = "";
 }
 
 /// <summary>One bucket of takings — a day, or a week — used by the money screen and the dashboard.</summary>

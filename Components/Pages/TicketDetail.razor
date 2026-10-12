@@ -7,6 +7,8 @@
 @inject QuickItemRepo QuickItems
 @inject PhotoRepo Photos
 @inject AuditWriter Audit
+@inject CurrentUser Me
+@inject AuditRepo AuditTrail
 @inject NavigationManager Nav
 
 <PageTitle>@(_ticket?.Number ?? "Ticket") — WrenchDesk</PageTitle>
@@ -52,6 +54,10 @@ else
                     <span>@_machines.Count machines · </span>
                 }
                 <span>in @FormatIso(_ticket.IntakeOn)</span>
+                @if (!string.IsNullOrWhiteSpace(_ticket.CreatedBy))
+                {
+                    <span> · written up by @_ticket.CreatedBy</span>
+                }
                 @if (_showPromised && !string.IsNullOrWhiteSpace(_ticket.PromisedOn)) { <span> · @_promisedLabel.ToLowerInvariant() @FormatIso(_ticket.PromisedOn)</span> }
                 @if (!string.IsNullOrWhiteSpace(_customer?.Email)) { <span> · <a href="@($"mailto:{_customer.Email}")">@_customer.Email</a></span> }
             </p>
@@ -164,6 +170,32 @@ else
                 }
             </div>
         </div>
+
+        @if (_history.Count > 0)
+        {
+            <div class="card no-print">
+                <div class="card-head">
+                    <h2>This ticket's history</h2>
+                    <div class="spacer"></div>
+                    <span class="muted small">@_history.Count entr@(_history.Count == 1 ? "y" : "ies")</span>
+                </div>
+                <div class="card-body">
+                    <ul class="history">
+                        @foreach (var entry in _history)
+                        {
+                            <li>
+                                <span class="when">@(entry.At?.ToString("d MMM, HH:mm") ?? "")</span>
+                                <span class="what">@entry.Action</span>
+                                @if (!string.IsNullOrWhiteSpace(entry.UserName))
+                                {
+                                    <span class="who">@entry.UserName</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        }
 
         <div class="card no-print">
             <div class="card-head">
@@ -506,13 +538,16 @@ else
                 <div class="table-wrap">
                     <table class="data">
                         <thead>
-                            <tr><th>Date</th><th>Method</th><th>Ref / note</th><th class="num">Amount</th><th class="shrink no-print"></th></tr>
+                            <tr><th>Taken by</th><th>Date</th><th>Method</th><th>Ref / note</th><th class="num">Amount</th><th class="shrink no-print"></th></tr>
                         </thead>
                         <tbody>
                             @foreach (var p in _payments)
                             {
                                 var pay = p;
                                 <tr>
+                                    <td class="small">
+                                        @(string.IsNullOrWhiteSpace(p.TakenBy) ? "—" : p.TakenBy)
+                                    </td>
                                     <td class="tnum small">
                                         @FormatIso(p.PaidOn)
                                         @if (p.CountedOnAnotherDay)
@@ -704,6 +739,8 @@ else
     private List<TicketEquipment> _machines = new();
     private bool _taxEnabled = true;
     private bool _showPromised = true;
+    private string _meName = "";
+    private List<AuditEntry> _history = new();
     private string _promisedLabel = "Promised by";
     private List<Photo> _photos = new();
     private string? _photoError;
@@ -736,7 +773,11 @@ else
     private string _apptAddress = "";
     private string _apptNotes = "";
 
-    protected override void OnParametersSet() => Load();
+    protected override async Task OnParametersSetAsync()
+    {
+        _meName = (await Me.GetAsync()).Name;
+        Load();
+    }
 
     private void Load()
     {
@@ -753,6 +794,9 @@ else
         _machines = Tickets.Machines(Id);
         _photos = Photos.ForTicket(Id);
 
+        // Newest last, so it reads top to bottom like the job happened.
+        _history = AuditTrail.ForEntity(AuditEntity.Ticket, Id);
+
         _lines = Tickets.Lines(Id);
         _quickItems = QuickItems.Active();
         _quickPrices = _quickItems.ToDictionary(i => i.Id, QuickItems.StartingPriceFor);
@@ -764,7 +808,7 @@ else
     private void SaveTicket()
     {
         if (_ticket is null) return;
-        Tickets.Update(_ticket);
+        Tickets.Update(_ticket, _meName);
         Recalculate();
     }
 
@@ -792,7 +836,7 @@ else
 
         _closeProblem = null;
         var was = _ticket?.Status ?? "";
-        Tickets.SetStatus(Id, status);
+        Tickets.SetStatus(Id, status, _meName);
 
         await Audit.WriteAsync("Moved a ticket to " + status, AuditEntity.Ticket, Id,
             $"{_ticket?.Number} ({was} to {status})");
@@ -1145,7 +1189,7 @@ else
             Reference = _payReference,
             Note = _payNote,
             PaidOn = _payDate.ToString("yyyy-MM-dd")
-        });
+        }, _meName);
 
         await Audit.WriteAsync("Recorded a payment", AuditEntity.Payment, Id,
             $"{Money.Fmt(cents)} {_payMethod} on {_ticket.Number}");
