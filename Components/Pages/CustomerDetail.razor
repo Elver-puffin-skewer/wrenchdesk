@@ -4,6 +4,7 @@
 @inject MoneyRepo Payments
 @inject ScheduleRepo Schedule
 @inject NavigationManager Nav
+@inject AuditWriter Audit
 
 <PageTitle>@(_customer?.DisplayName ?? "Customer") — WrenchDesk</PageTitle>
 
@@ -558,7 +559,7 @@ else
             _keepId = Id;
     }
 
-    private void DoMerge()
+    private async Task DoMerge()
     {
         if (_keepId is null) return;
 
@@ -572,13 +573,16 @@ else
             return;
         }
 
+        await Audit.WriteAsync("Merged customer records", AuditEntity.Customer, _keepId.Value,
+            $"{RemovedNames()} into {KeptName()}");
+
         // Closed before navigating: the page is the same component with a different id, so a modal
         // left open would still be sitting there over the record that was just merged into.
         _mergeOpen = false;
         Nav.NavigateTo($"/customers/{_keepId.Value}");
     }
 
-    private void DeleteCustomer()
+    private async Task DeleteCustomer()
     {
         var problem = Customers.TryDelete(Id);
         if (problem is not null)
@@ -587,6 +591,9 @@ else
             _confirmDelete = false;
             return;
         }
+
+        await Audit.WriteAsync("Deleted a customer", AuditEntity.Customer, Id,
+            _customer?.DisplayName ?? "");
 
         _mergeOpen = false;
         Nav.NavigateTo("/customers");

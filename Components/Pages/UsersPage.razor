@@ -1,0 +1,324 @@
+@page "/users"
+@inject UserRepo Users
+@inject CurrentUser Me
+@inject AuditWriter Audit
+@inject SettingsStore Settings
+
+<PageTitle>Who can use this — WrenchDesk</PageTitle>
+
+@if (!_allowed)
+{
+    <div class="alert alert-warn">Only an owner can change who has an account.</div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>Who can use this</h1>
+            <p class="sub">Accounts on this shop's copy of WrenchDesk.</p>
+        </div>
+        <div class="spacer"></div>
+        <div class="btn-row no-print">
+            <button class="btn btn-primary" @onclick="() => OpenEdit(null)">+ Add someone</button>
+        </div>
+    </div>
+
+    @if (_flash is not null)
+    {
+        <div class="alert alert-ok">@_flash</div>
+    }
+
+    @if (!_signInRequired)
+    {
+        <div class="alert alert-warn">
+            <strong>Signing in is switched off.</strong> These accounts exist but nobody is asked
+            for one — anybody who can reach WrenchDesk is treated as an owner. Turn it on under
+            <a href="/settings">Settings</a>.
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-body table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Signs in as</th>
+                        <th>Can do</th>
+                        <th>Password</th>
+                        <th>Last signed in</th>
+                        <th class="shrink no-print"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var person in _users)
+                    {
+                        var u = person;
+                        <tr class="@(u.IsActive ? "" : "muted")">
+                            <td class="strong">
+                                @u.Name
+                                @if (!u.IsActive) { <span class="muted small"> · switched off</span> }
+                            </td>
+                            <td class="mono small">@u.Username</td>
+                            <td>
+                                <span class="badge">@u.Role</span>
+                                <div class="muted small">@UserRole.Describe(u.Role)</div>
+                            </td>
+                            <td>
+                                @if (u.HasPassword)
+                                {
+                                    <span>Set</span>
+                                }
+                                else
+                                {
+                                    <span class="money-owed" title="Anybody can sign in as this person by picking the name">
+                                        None
+                                    </span>
+                                }
+                            </td>
+                            <td class="small">@(u.LastLogin?.ToString("d MMM yyyy, HH:mm") ?? "—")</td>
+                            <td class="shrink no-print">
+                                <div class="row-tools">
+                                    <button class="btn btn-ghost btn-sm" @onclick="() => OpenEdit(u)">Edit</button>
+                                    <button class="btn btn-ghost btn-sm" @onclick="() => OpenPassword(u)">Password</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (_editOpen)
+{
+    <Modal Title="@(_editing.Id == 0 ? "Add someone" : $"Edit {_editing.Name}")" OnClose="() => _editOpen = false">
+        <ChildContent>
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <div class="field">
+                <label>Sign-in name</label>
+                <input type="text" @bind="_editing.Username" disabled="@(_editing.Id != 0)" placeholder="walt" />
+                @if (_editing.Id != 0)
+                {
+                    <div class="muted small" style="margin-top:.2rem">The sign-in name cannot be changed.</div>
+                }
+            </div>
+
+            <div class="field">
+                <label>Name to show</label>
+                <input type="text" @bind="_editing.DisplayName" placeholder="Walt" />
+            </div>
+
+            <div class="field">
+                <label>What they can do</label>
+                @foreach (var role in UserRole.All)
+                {
+                    var r = role;
+                    <label class="check" style="margin-bottom:.25rem">
+                        <input type="radio" name="role" checked="@(_editing.Role == r)"
+                               @onchange="() => _editing.Role = r" />
+                        <span><strong>@r</strong> <span class="muted small">— @UserRole.Describe(r)</span></span>
+                    </label>
+                }
+            </div>
+
+            @if (_editing.Id == 0)
+            {
+                <div class="field">
+                    <label>Password</label>
+                    <input type="password" @bind="_newPassword" />
+                    <div class="muted small" style="margin-top:.2rem">
+                        Leave empty for no password — see the warning below.
+                    </div>
+                </div>
+
+                @if (string.IsNullOrEmpty(_newPassword))
+                {
+                    <div class="alert alert-warn" style="margin-bottom:0">@NoPasswordWarning</div>
+                }
+            }
+            else
+            {
+                <div class="field">
+                    <label class="check">
+                        <input type="checkbox" @bind="_editing.IsActive" />
+                        <span>This account can sign in</span>
+                    </label>
+                    <div class="muted small" style="margin-top:.2rem">
+                        Switching somebody off keeps their name on everything they did. Removing the
+                        account keeps the history too, but the name stops being clickable.
+                    </div>
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _editOpen = false">Cancel</button>
+
+            @if (_editing.Id != 0)
+            {
+                @if (_confirmRemove)
+                {
+                    <span class="muted small" style="align-self:center">Remove @_editing.Name?</span>
+                    <button class="btn" @onclick="() => _confirmRemove = false">No</button>
+                    <button class="btn btn-danger" @onclick="RemoveUser">Yes, remove</button>
+                }
+                else
+                {
+                    <button class="btn btn-danger" @onclick="() => _confirmRemove = true">Remove</button>
+                }
+            }
+
+            @if (!_confirmRemove)
+            {
+                <button class="btn btn-primary" @onclick="SaveUser">Save</button>
+            }
+        </Footer>
+    </Modal>
+}
+
+@if (_passwordOpen)
+{
+    <Modal Title="@($"Password for {_editing.Name}")" OnClose="() => _passwordOpen = false">
+        <ChildContent>
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <div class="field">
+                <label>New password</label>
+                <input type="password" @bind="_newPassword" autocomplete="new-password" />
+                <div class="muted small" style="margin-top:.2rem">
+                    Leave it empty to remove the password, so this account signs in by picking a name.
+                </div>
+            </div>
+
+            @if (string.IsNullOrEmpty(_newPassword))
+            {
+                <div class="alert alert-warn" style="margin-bottom:0">@NoPasswordWarning</div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _passwordOpen = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="SavePassword">
+                @(string.IsNullOrEmpty(_newPassword) ? "Remove the password" : "Set the password")
+            </button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private const string NoPasswordWarning =
+        "With no password, anybody who can reach WrenchDesk on the shop's network can sign in as " +
+        "this person by tapping their name — no secret of any kind. The audit log will say they " +
+        "did it. That is a reasonable trade at a bench where everyone is trusted and typing a " +
+        "password on a tablet is a nuisance; it is not a way to keep anybody out.";
+
+    private List<User> _users = new();
+    private bool _allowed;
+    private bool _signInRequired;
+    private string? _flash;
+    private string? _error;
+
+    private bool _editOpen;
+    private bool _passwordOpen;
+    private bool _confirmRemove;
+    private User _editing = new();
+    private string _newPassword = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allowed = await Me.CanManageUsersAsync();
+        Load();
+    }
+
+    private void Load()
+    {
+        _users = Users.All();
+        _signInRequired = Settings.GetBool(SettingsStore.AuthRequired);
+    }
+
+    private void OpenEdit(User? existing)
+    {
+        _error = null;
+        _confirmRemove = false;
+        _newPassword = "";
+
+        _editing = existing is null
+            ? new User { Role = UserRole.Tech }
+            : new User
+            {
+                Id = existing.Id,
+                Username = existing.Username,
+                DisplayName = existing.DisplayName,
+                Role = existing.Role,
+                IsActive = existing.IsActive
+            };
+
+        _editOpen = true;
+    }
+
+    private void OpenPassword(User person)
+    {
+        _error = null;
+        _newPassword = "";
+        _editing = person;
+        _passwordOpen = true;
+    }
+
+    private async Task SaveUser()
+    {
+        _error = _editing.Id == 0
+            ? Users.Create(_editing.Username, _editing.DisplayName,
+                string.IsNullOrEmpty(_newPassword) ? null : _newPassword, _editing.Role)
+            : Users.UpdateDetails(_editing.Id, _editing.DisplayName, _editing.Role, _editing.IsActive);
+
+        if (_error is not null) return;
+
+        var action = _editing.Id == 0 ? "Added an account" : "Changed an account";
+        await Audit.WriteAsync(action, AuditEntity.User, _editing.Id == 0 ? null : _editing.Id,
+            $"{_editing.Username} ({_editing.Role})");
+
+        _flash = _editing.Id == 0 ? $"{_editing.Username} can now sign in." : "Saved.";
+        _editOpen = false;
+        Load();
+    }
+
+    private async Task SavePassword()
+    {
+        _error = Users.SetPassword(_editing.Id, string.IsNullOrEmpty(_newPassword) ? null : _newPassword);
+        if (_error is not null) return;
+
+        await Audit.WriteAsync(
+            string.IsNullOrEmpty(_newPassword) ? "Removed an account password" : "Set an account password",
+            AuditEntity.User, _editing.Id, _editing.Username);
+
+        _flash = string.IsNullOrEmpty(_newPassword)
+            ? $"{_editing.Name} now signs in by picking their name."
+            : $"Password set for {_editing.Name}.";
+
+        _passwordOpen = false;
+        Load();
+    }
+
+    private async Task RemoveUser()
+    {
+        _error = Users.Delete(_editing.Id);
+        if (_error is not null)
+        {
+            _confirmRemove = false;
+            return;
+        }
+
+        await Audit.WriteAsync("Removed an account", AuditEntity.User, _editing.Id, _editing.Username);
+
+        _flash = $"{_editing.Name} has been removed.";
+        _editOpen = false;
+        Load();
+    }
+}

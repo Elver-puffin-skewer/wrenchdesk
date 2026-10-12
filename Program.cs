@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using WrenchDesk.Components;
 using WrenchDesk.Data;
 using WrenchDesk.Services;
@@ -36,6 +38,27 @@ if (OperatingSystem.IsWindows() && !SingleInstance.TryClaim(port))
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Signing in is optional, but the machinery for it is always present - a shop that switches it on
+// should not need a different build, and one that leaves it off pays nothing for it being here.
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAuthorization();
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login";
+        options.LogoutPath = "/auth/logout";
+        options.AccessDeniedPath = "/login";
+        options.Cookie.Name = "wrenchdesk.auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+
+        // A month, sliding. The tablet at the bench is signed into once and then used, rather
+        // than asking for a password twenty times a day.
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+        options.SlidingExpiration = true;
+    });
+
 builder.Services.AddSingleton<Db>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<CustomerRepo>();
@@ -44,6 +67,10 @@ builder.Services.AddScoped<MoneyRepo>();
 builder.Services.AddScoped<ScheduleRepo>();
 builder.Services.AddScoped<QuickItemRepo>();
 builder.Services.AddScoped<PhotoRepo>();
+builder.Services.AddScoped<UserRepo>();
+builder.Services.AddScoped<AuditRepo>();
+builder.Services.AddScoped<CurrentUser>();
+builder.Services.AddScoped<AuditWriter>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<GoogleAuthService>();
 builder.Services.AddScoped<CalendarSyncService>();
@@ -84,7 +111,49 @@ if (!app.Environment.IsDevelopment())
 // "WebRootPath was not found ... static files may be unavailable" warning that means nothing.
 if (Directory.Exists(app.Environment.WebRootPath ?? "")) app.UseStaticFiles();
 
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
+
+// Everything behind the sign-in, including the plain endpoints. Putting this here rather than
+// on the pages means the CSV export and the photo files are covered by the same rule as the
+// screens - an export anybody on the wifi can fetch is not a locked door.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? "";
+
+    var alwaysOpen =
+        path.StartsWith("/login", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/auth/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/app.css", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/favicon.ico", StringComparison.OrdinalIgnoreCase);
+
+    if (alwaysOpen || context.User?.Identity?.IsAuthenticated == true)
+    {
+        await next();
+        return;
+    }
+
+    var settings = context.RequestServices.GetRequiredService<SettingsStore>();
+    if (!settings.GetBool(SettingsStore.AuthRequired))
+    {
+        await next();
+        return;
+    }
+
+    // Sign-in is on but nobody has an account yet, which would lock the shop out of its own
+    // records. The first-run screen is the way back in.
+    var users = context.RequestServices.GetRequiredService<UserRepo>();
+    if (!users.AnyExist())
+    {
+        await next();
+        return;
+    }
+
+    context.Response.Redirect("/login?from=" + Uri.EscapeDataString(path));
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -146,6 +215,84 @@ app.MapGet("/export/appointment/{id:long}.ics", (long id, ScheduleRepo schedule,
     var ics = CalendarLinks.BuildIcs(new[] { row }, settings.Get(SettingsStore.ShopName));
     return Results.File(Encoding.UTF8.GetBytes(ics), "text/calendar", $"appointment-{id}.ics");
 });
+
+// ---- Signing in ----
+// Plain endpoints rather than Blazor components on purpose: issuing the cookie has to happen
+// while the response can still carry a header, which is not true inside an interactive
+// component. The sign-in screen posts a normal browser form to these.
+
+app.MapPost("/auth/login", async (HttpContext http, UserRepo users, AuditRepo audit,
+    [Microsoft.AspNetCore.Mvc.FromForm] string? username,
+    [Microsoft.AspNetCore.Mvc.FromForm] string? password,
+    [Microsoft.AspNetCore.Mvc.FromForm] string? from) =>
+{
+    var user = users.Authenticate(username, password);
+
+    if (user is null)
+    {
+        audit.Write(null, username ?? "(unknown)", "Sign-in refused", AuditEntity.Session);
+
+        // Deliberately vague: which half was wrong is not the signed-out visitor's business.
+        return Results.Redirect("/login?bad=1");
+    }
+
+    await http.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        CurrentUser.ClaimsFor(user),
+        new AuthenticationProperties { IsPersistent = true });
+
+    users.StampLogin(user.Id);
+    audit.Write(user.Id, user.Name, "Signed in", AuditEntity.Session);
+
+    // Only ever back into this app, never to wherever a crafted link points.
+    var target = !string.IsNullOrWhiteSpace(from) && from.StartsWith('/') && !from.StartsWith("//")
+        ? from
+        : "/";
+
+    return Results.Redirect(target);
+}).DisableAntiforgery();
+
+app.MapPost("/auth/logout", async (HttpContext http, AuditRepo audit, UserRepo users) =>
+{
+    var name = http.User.Identity?.Name;
+    var user = users.ByUsername(name);
+
+    await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    audit.Write(user?.Id, user?.Name ?? name ?? "", "Signed out", AuditEntity.Session);
+
+    return Results.Redirect("/login");
+}).DisableAntiforgery();
+
+app.MapPost("/auth/first-run", async (HttpContext http, UserRepo users, SettingsStore settings,
+    AuditRepo audit,
+    [Microsoft.AspNetCore.Mvc.FromForm] string? username,
+    [Microsoft.AspNetCore.Mvc.FromForm] string? displayName,
+    [Microsoft.AspNetCore.Mvc.FromForm] string? password) =>
+{
+    // Only ever the very first account. Once one exists this door is shut, or anybody could walk
+    // up and make themselves an owner.
+    if (users.AnyExist()) return Results.Redirect("/login");
+
+    var problem = users.Create(username ?? "", displayName ?? "", password, UserRole.Owner);
+    if (problem is not null) return Results.Redirect("/login?setup=" + Uri.EscapeDataString(problem));
+
+    settings.Set(SettingsStore.AuthRequired, "true");
+
+    var created = users.ByUsername(username);
+    if (created is not null)
+    {
+        await http.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            CurrentUser.ClaimsFor(created),
+            new AuthenticationProperties { IsPersistent = true });
+
+        users.StampLogin(created.Id);
+        audit.Write(created.Id, created.Name, "Created the first account and switched sign-in on",
+            AuditEntity.User, created.Id);
+    }
+
+    return Results.Redirect("/");
+}).DisableAntiforgery();
 
 // ---- Google Calendar OAuth ----
 // Google redirects a browser back here, which a Blazor component cannot receive, so these are

@@ -1,0 +1,139 @@
+@page "/audit"
+@inject AuditRepo Audit
+@inject CurrentUser Me
+
+<PageTitle>What has been done — WrenchDesk</PageTitle>
+
+@if (!_allowed)
+{
+    <div class="alert alert-warn">Only an owner or the office can read the log.</div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>What has been done</h1>
+            <p class="sub">
+                Money, deletions, merges, status changes, accounts and sign-ins — the things worth
+                being able to answer for later.
+            </p>
+        </div>
+        <div class="spacer"></div>
+        <div class="btn-row no-print">
+            <button class="btn" onclick="window.print()">🖨 Print</button>
+        </div>
+    </div>
+
+    <div class="card no-print">
+        <div class="card-body">
+            <div class="btn-row">
+                <button class="btn btn-sm @(_entity is null ? "btn-primary" : "")"
+                        @onclick="() => Filter(null)">Everything</button>
+
+                @foreach (var kind in Kinds)
+                {
+                    var k = kind;
+                    <button class="btn btn-sm @(_entity == k ? "btn-primary" : "")"
+                            @onclick="() => Filter(k)">@k</button>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (_entries.Count == 0)
+    {
+        <div class="card">
+            <div class="empty">
+                <div class="big">📋</div>
+                <div>Nothing recorded yet@(_entity is null ? "" : $" for {_entity.ToLowerInvariant()}s").</div>
+                <div class="muted small">
+                    The log starts from the version that introduced it — it cannot show what happened
+                    before that.
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:12rem">When</th>
+                            <th style="width:10rem">Who</th>
+                            <th>What</th>
+                            <th>Which</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in _entries)
+                        {
+                            var e = entry;
+                            <tr>
+                                <td class="small tnum">@(e.At?.ToString("d MMM yyyy, HH:mm") ?? e.AtUtc)</td>
+                                <td class="small">@(string.IsNullOrWhiteSpace(e.UserName) ? "—" : e.UserName)</td>
+                                <td>@e.Action</td>
+                                <td class="small">
+                                    @if (e.Link is not null)
+                                    {
+                                        <a href="@e.Link">@DetailText(e)</a>
+                                    }
+                                    else
+                                    {
+                                        @DetailText(e)
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <p class="muted small">
+            Showing the most recent @_entries.Count of @_total.
+        </p>
+    }
+}
+
+@code {
+    private static readonly string[] Kinds =
+    {
+        AuditEntity.Payment, AuditEntity.Ticket, AuditEntity.Customer,
+        AuditEntity.User, AuditEntity.Settings, AuditEntity.Session
+    };
+
+    private List<AuditEntry> _entries = new();
+    private string? _entity;
+    private bool _allowed;
+    private int _total;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The office needs to be able to answer for the money as much as the owner does.
+        _allowed = await Me.CanSeeMoneyAsync();
+        Load();
+    }
+
+    private void Filter(string? entity)
+    {
+        _entity = entity;
+        Load();
+    }
+
+    private void Load()
+    {
+        if (!_allowed) return;
+
+        _entries = Audit.Recent(300, _entity);
+        _total = Audit.Count();
+    }
+
+    private static string DetailText(AuditEntry e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.Detail)) return e.Detail;
+        if (!string.IsNullOrWhiteSpace(e.Entity)) return e.EntityId is null ? e.Entity : $"{e.Entity} #{e.EntityId}";
+        return "";
+    }
+}

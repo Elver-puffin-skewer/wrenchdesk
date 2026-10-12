@@ -22,6 +22,8 @@ public sealed class TestDb : IDisposable
     public BackupService Backups { get; }
     public QuickItemRepo QuickItems { get; }
     public PhotoRepo Photos { get; }
+    public UserRepo Users { get; }
+    public AuditRepo Audit { get; }
     public WrenchDesk.Services.Google.CalendarSyncService CalendarSync { get; }
 
     public TestDb()
@@ -44,6 +46,8 @@ public sealed class TestDb : IDisposable
         Backups = new BackupService(Db, Settings, NullLogger<BackupService>.Instance);
         QuickItems = new QuickItemRepo(Db);
         Photos = new PhotoRepo(Db, NullLogger<PhotoRepo>.Instance);
+        Users = new UserRepo(Db);
+        Audit = new AuditRepo(Db);
         CalendarSync = new WrenchDesk.Services.Google.CalendarSyncService(
             Schedule, Customers, Settings, NullLogger<WrenchDesk.Services.Google.CalendarSyncService>.Instance);
     }

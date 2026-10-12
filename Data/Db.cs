@@ -476,6 +476,41 @@ public class Db
             created_utc  TEXT NOT NULL
         );
         CREATE INDEX ix_photos_ticket ON photos(ticket_id, id);
+        """,
+
+        // 6 -> 7: who is using the shop, and what they did
+        """
+        -- COLLATE NOCASE on the name so "Walt" and "walt" are one person rather than two
+        -- accounts nobody can tell apart on a sign-in screen.
+        CREATE TABLE users (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            username       TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            display_name   TEXT NOT NULL DEFAULT '',
+
+            -- Empty means this account signs in without a password. That is a deliberate choice
+            -- a shop can make, warned about where it is made, not an account half set up.
+            password_hash  TEXT NOT NULL DEFAULT '',
+
+            role           TEXT NOT NULL DEFAULT 'Tech',
+            is_active      INTEGER NOT NULL DEFAULT 1,
+            created_utc    TEXT NOT NULL,
+            last_login_utc TEXT NOT NULL DEFAULT ''
+        );
+
+        -- What happened, who did it, and when. The name is copied in rather than only referenced,
+        -- so the trail still reads properly after an account has been removed - a log that forgets
+        -- who did something the moment they leave is not a log.
+        CREATE TABLE audit_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            at_utc     TEXT NOT NULL,
+            user_id    INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+            user_name  TEXT NOT NULL DEFAULT '',
+            action     TEXT NOT NULL,
+            entity     TEXT NOT NULL DEFAULT '',
+            entity_id  INTEGER NULL,
+            detail     TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX ix_audit_at ON audit_log(at_utc DESC);
         """
     };
 }
@@ -521,6 +556,12 @@ public class SettingsStore
     /// answering the same question on every line forever.
     /// </summary>
     public const string TaxEnabled = "tax.enabled";
+
+    /// <summary>
+    /// Whether anybody has to sign in. Off is how every shop ran before accounts existed, and
+    /// stays the default so an update never locks a shop out of its own records at 7am.
+    /// </summary>
+    public const string AuthRequired = "auth.required";
     public const string LaborRateCents = "labor.rate_cents";
     public const string TicketPrefix = "ticket.prefix";
     public const string EstimateFooter = "estimate.footer";
@@ -603,6 +644,9 @@ public class SettingsStore
         // On by default, so nothing changes for a shop that already charges tax. A shop that does
         // not turns it off once in Settings.
         [TaxEnabled] = "true",
+
+        // Off until a shop turns it on. Updating must never be the thing that stops the counter working.
+        [AuthRequired] = "false",
         [LaborRateCents] = "6500",
         [TicketPrefix] = "WSE",
         [EstimateFooter] = "Estimate valid for 30 days. Parts and labor may change if additional problems are found.",

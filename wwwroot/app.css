@@ -994,3 +994,95 @@ label.check input { margin: 0; }
         vertical-align: middle;
     }
 }
+
+/* ---- Signing in -------------------------------------------------------- */
+
+.bare {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: var(--cream);
+}
+
+.signin-wrap { width: 100%; max-width: 26rem; }
+
+.signin-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+}
+
+.signin-head {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    margin-bottom: 1.1rem;
+}
+
+.signin-head h1 { font-size: 1.25rem; margin: 0; }
+.signin-head p { margin: 0; }
+.signin-form .field { margin-bottom: .8rem; }
+.signin-form .btn-lg { width: 100%; }
+
+.signin-people {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-bottom: .6rem;
+}
+
+/* Finger-sized: this is the bench tablet's way in. */
+.btn-person {
+    padding: .7rem 1.1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    min-width: 7rem;
+}
+
+.signin-or {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    margin: .9rem 0 .7rem;
+    color: var(--ink-3);
+    font-size: .8rem;
+}
+
+.signin-or::before,
+.signin-or::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--line-2);
+}
+
+/* ---- Who is signed in -------------------------------------------------- */
+
+.whoami {
+    border-top: 1px solid rgba(255, 255, 255, .15);
+    padding-top: .6rem;
+    margin-top: .6rem;
+    font-size: .8rem;
+}
+
+.whoami .name { font-weight: 600; display: block; }
+.whoami .role { opacity: .7; }
+
+.whoami form { margin-top: .35rem; }
+
+.whoami button {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    opacity: .8;
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+    font-size: .8rem;
+}
+
+.whoami button:hover { opacity: 1; }

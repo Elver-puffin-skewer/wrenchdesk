@@ -6,6 +6,7 @@
 @inject SettingsStore Settings
 @inject QuickItemRepo QuickItems
 @inject PhotoRepo Photos
+@inject AuditWriter Audit
 @inject NavigationManager Nav
 
 <PageTitle>@(_ticket?.Number ?? "Ticket") — WrenchDesk</PageTitle>
@@ -773,7 +774,7 @@ else
         _totals = TicketTotals.From(_lines, _ticket.TaxRateBp, _payments.Sum(p => p.AmountCents));
     }
 
-    private void ChangeStatus(string status)
+    private async Task ChangeStatus(string status)
     {
         if (status == TicketStatus.Closed)
         {
@@ -790,7 +791,12 @@ else
         }
 
         _closeProblem = null;
+        var was = _ticket?.Status ?? "";
         Tickets.SetStatus(Id, status);
+
+        await Audit.WriteAsync("Moved a ticket to " + status, AuditEntity.Ticket, Id,
+            $"{_ticket?.Number} ({was} to {status})");
+
         _flash = $"Moved to {status}.";
         Load();
     }
@@ -1120,7 +1126,7 @@ else
 
     private void FillBalance() => _payAmount = (_totals.BalanceCents / 100m).ToString("0.00");
 
-    private void SavePayment()
+    private async Task SavePayment()
     {
         if (_ticket is null) return;
 
@@ -1140,6 +1146,9 @@ else
             Note = _payNote,
             PaidOn = _payDate.ToString("yyyy-MM-dd")
         });
+
+        await Audit.WriteAsync("Recorded a payment", AuditEntity.Payment, Id,
+            $"{Money.Fmt(cents)} {_payMethod} on {_ticket.Number}");
 
         _paymentModalOpen = false;
         _flash = $"Recorded {Money.Fmt(cents)}.";

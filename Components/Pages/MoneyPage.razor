@@ -2,6 +2,8 @@
 @inject MoneyRepo Repo
 @inject CustomerRepo Customers
 @inject SettingsStore Settings
+@inject CurrentUser Me
+@inject NavigationManager Nav
 
 <PageTitle>Money — WrenchDesk</PageTitle>
 
@@ -330,7 +332,18 @@
     private List<Customer> _customerMatches = new();
     private string? _payError;
 
-    protected override void OnInitialized() => Load();
+    protected override async Task OnInitializedAsync()
+    {
+        // Hiding the link in the sidebar is tidiness, not a lock. Somebody who types the address
+        // has to be turned away here.
+        if (!await Me.CanSeeMoneyAsync())
+        {
+            Nav.NavigateTo("/", replace: true);
+            return;
+        }
+
+        Load();
+    }
 
     private void Load()
     {

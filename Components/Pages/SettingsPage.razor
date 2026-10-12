@@ -7,6 +7,9 @@
 @inject ScheduleRepo Schedule
 @inject QuickItemRepo QuickItems
 @inject NavigationManager Nav
+@inject CurrentUser Me
+@inject AuditWriter Audit
+@inject UserRepo UsersRepo
 
 <PageTitle>Settings — WrenchDesk</PageTitle>
 
@@ -103,6 +106,44 @@
                 <textarea rows="3" @bind="_values[SettingsStore.EstimateFooter]"></textarea>
                 <div class="muted small" style="margin-top:.2rem">Printed at the bottom of estimates, above the signature line.</div>
             </div>
+
+                <div class="field span-2">
+                    <label>Signing in</label>
+                    <label class="check">
+                        <input type="checkbox" @bind="_authRequired" />
+                        <span>Ask who you are before using WrenchDesk</span>
+                    </label>
+
+                    @if (_authRequired)
+                    {
+                        <div class="muted small" style="margin-top:.2rem">
+                            Everyone needs an account. Set them up under
+                            <a href="/users">Accounts</a> — each person can have a password, or sign
+                            in by tapping their name. Everything anybody does is recorded under
+                            <a href="/audit">Activity</a>.
+                        </div>
+
+                        @if (!_anyAccounts)
+                        {
+                            <div class="alert alert-warn" style="margin-top:.4rem;margin-bottom:0">
+                                <strong>There are no accounts yet.</strong> Saving this will ask you to
+                                make the first one next time WrenchDesk is opened. Make one under
+                                <a href="/users">Accounts</a> first if you would rather not be surprised.
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="alert alert-warn" style="margin-top:.4rem;margin-bottom:0">
+                            <strong>Anybody who can reach WrenchDesk can use all of it.</strong>
+                            No name, no password, nothing recorded against anybody — on the shop PC,
+                            on every phone and tablet on the wifi, and on any other machine on the
+                            network. That is how WrenchDesk has always worked and it is a fair trade
+                            for a shop where everyone is trusted. It is not a trade worth making once
+                            more than a couple of people are on the network.
+                        </div>
+                    }
+                </div>
 
                 <div class="field span-2">
                     <label>The promised-by date</label>
@@ -855,6 +896,8 @@
     private string _laborRate = "";
     private string _taxRate = "";
     private bool _taxEnabled = true;
+    private bool _authRequired;
+    private bool _anyAccounts;
     private bool _showPromised = true;
     private string _promisedLabel = "";
     private bool _printComplaint = true;
@@ -888,7 +931,18 @@
 
     protected override void OnParametersSet() => ReadGoogleOutcome();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await Me.CanChangeSettingsAsync())
+        {
+            Nav.NavigateTo("/", replace: true);
+            return;
+        }
+
+        Start();
+    }
+
+    private void Start()
     {
         _drives = BackupService.ListDrives();
         Load();
@@ -905,6 +959,8 @@
         _laborRate = (Settings.GetInt(SettingsStore.LaborRateCents) / 100m).ToString("0.00");
         _taxRate = (Settings.GetInt(SettingsStore.TaxRateBp) / 100m).ToString("0.####");
         _taxEnabled = Settings.GetBool(SettingsStore.TaxEnabled);
+        _authRequired = Settings.GetBool(SettingsStore.AuthRequired);
+        _anyAccounts = UsersRepo.AnyExist();
         _showPromised = Settings.GetBool(SettingsStore.PromisedShow);
         _promisedLabel = Settings.Get(SettingsStore.PromisedLabel);
         _printComplaint = Settings.GetBool(SettingsStore.PrintShowComplaint);
@@ -998,7 +1054,7 @@
 
     private string SecondDestination() => Combine(_secondRoot, _secondFolder);
 
-    private void OnSecondToggle(ChangeEventArgs e)
+    private async Task OnSecondToggle(ChangeEventArgs e)
     {
         _secondEnabled = e.Value is bool b && b;
         if (!_secondEnabled)
@@ -1006,15 +1062,15 @@
             _secondRoot = "";
             _secondFolder = DefaultFolderName;
         }
-        Save();
+        await Save();
     }
 
-    private void OnSecondRootChange(ChangeEventArgs e)
+    private async Task OnSecondRootChange(ChangeEventArgs e)
     {
         _secondRoot = e.Value?.ToString() ?? "";
         if (_secondRoot != CustomPathOption && string.IsNullOrWhiteSpace(_secondFolder))
             _secondFolder = DefaultFolderName;
-        Save();
+        await Save();
     }
 
     private string ScheduleDestination()
@@ -1041,26 +1097,29 @@
         _manualResult = null;
     }
 
-    private void OnScheduleRootChange(ChangeEventArgs e)
+    private async Task OnScheduleRootChange(ChangeEventArgs e)
     {
         _scheduleRoot = e.Value?.ToString() ?? "";
         if (_scheduleRoot != CustomPathOption && string.IsNullOrWhiteSpace(_scheduleFolder))
             _scheduleFolder = DefaultFolderName;
-        Save();
+        await Save();
     }
 
-    private void OnAutoToggle(ChangeEventArgs e)
+    private async Task OnAutoToggle(ChangeEventArgs e)
     {
         _autoEnabled = e.Value is bool b && b;
-        Save();
+        await Save();
     }
 
-    private void Save()
+    private async Task Save()
     {
+        var signInWas = Settings.GetBool(SettingsStore.AuthRequired);
+
         if (Money.TryParse(_laborRate, out var laborCents))
             _values[SettingsStore.LaborRateCents] = laborCents.ToString();
 
         _values[SettingsStore.TaxEnabled] = _taxEnabled ? "true" : "false";
+        _values[SettingsStore.AuthRequired] = _authRequired ? "true" : "false";
         _values[SettingsStore.PromisedShow] = _showPromised ? "true" : "false";
         _values[SettingsStore.PromisedLabel] =
             string.IsNullOrWhiteSpace(_promisedLabel) ? "Promised by" : _promisedLabel.Trim();
@@ -1082,6 +1141,14 @@
         _values[SettingsStore.BackupDestination2] = _secondEnabled ? SecondDestination() : "";
 
         Settings.SetAll(_values);
+
+        await Audit.WriteAsync("Changed the settings", AuditEntity.Settings);
+        if (signInWas != _authRequired)
+        {
+            await Audit.WriteAsync(
+                _authRequired ? "Switched signing in ON" : "Switched signing in OFF", AuditEntity.Settings);
+        }
+
         _flash = "Settings saved.";
         Load();
     }

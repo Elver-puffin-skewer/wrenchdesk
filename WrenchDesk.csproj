@@ -17,7 +17,9 @@
 
     <AssemblyTitle>WrenchDesk</AssemblyTitle>
     <Product>WrenchDesk</Product>
-    <Company>Walt's Small Engines</Company>
+    <Company>Thomas Marks</Company>
+    <Authors>Thomas Marks</Authors>
+    <Copyright>Copyright (c) 2026 Thomas Marks</Copyright>
     <Description>Shop management for Walt's Small Engines</Description>
     <Version>2.3.1</Version>
   </PropertyGroup>

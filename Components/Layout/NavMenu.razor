@@ -1,4 +1,5 @@
 @inject SettingsStore Settings
+@inject CurrentUser Me
 
 <a class="brand" href="/">
     <span class="mark"><ShopLogo Variant="ShopLogo.LogoVariant.Mark" Alt="@_shopName" /></span>
@@ -11,22 +12,65 @@
     <NavLink href="/tickets"><span class="ico">🎫</span> Tickets</NavLink>
     <NavLink href="/parts"><span class="ico">📦</span> Parts</NavLink>
     <NavLink href="/schedule"><span class="ico">📅</span> Schedule</NavLink>
-    <NavLink href="/money"><span class="ico">💵</span> Money</NavLink>
-    <NavLink href="/settings"><span class="ico">⚙</span> Settings</NavLink>
+    @if (_canSeeMoney)
+    {
+        <NavLink href="/money"><span class="ico">💵</span> Money</NavLink>
+    }
+    @if (_canManageUsers)
+    {
+        <NavLink href="/users"><span class="ico">👥</span> Accounts</NavLink>
+    }
+    @if (_canSeeMoney)
+    {
+        <NavLink href="/audit"><span class="ico">📋</span> Activity</NavLink>
+    }
+    @if (_canChangeSettings)
+    {
+        <NavLink href="/settings"><span class="ico">⚙</span> Settings</NavLink>
+    }
     <NavLink href="/help"><span class="ico">?</span> Help</NavLink>
 </nav>
 
 <div class="sidebar-foot">
     Everything is stored on this PC.<br />
-    Set up backups in <a href="/settings" style="color:inherit;text-decoration:underline">Settings</a>.
+    @if (_canChangeSettings)
+    {
+        <span>Set up backups in <a href="/settings" style="color:inherit;text-decoration:underline">Settings</a>.</span>
+    }
+
+    @if (_signedIn)
+    {
+        <div class="whoami">
+            <span class="name">@_name</span>
+            <span class="role">@_role</span>
+            <form method="post" action="/auth/logout">
+                <button type="submit">Sign out</button>
+            </form>
+        </div>
+    }
 </div>
 
 @code {
     private string _shopName = "WrenchDesk";
+    private string _name = "";
+    private string _role = "";
+    private bool _signedIn;
+    private bool _canSeeMoney = true;
+    private bool _canChangeSettings = true;
+    private bool _canManageUsers;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         var name = Settings.Get(SettingsStore.ShopName);
         if (!string.IsNullOrWhiteSpace(name)) _shopName = name;
+
+        var me = await Me.GetAsync();
+        _signedIn = !await Me.IsTheShopAsync();
+        _name = me.Name;
+        _role = me.Role;
+
+        _canSeeMoney = UserRole.CanSeeMoney(me.Role);
+        _canChangeSettings = UserRole.CanChangeSettings(me.Role);
+        _canManageUsers = UserRole.CanManageUsers(me.Role);
     }
 }

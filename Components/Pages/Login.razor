@@ -1,0 +1,125 @@
+@page "/login"
+@layout Components.Layout.BareLayout
+@inject UserRepo Users
+@inject SettingsStore Settings
+
+@* A plain browser form, posted to a plain endpoint. Issuing the sign-in cookie has to happen
+   while the response can still carry a header, which is not true once an interactive component
+   is running - so nothing on this screen depends on a circuit being up. *@
+
+<PageTitle>Sign in — @_shopName</PageTitle>
+
+<div class="signin-wrap">
+    <div class="signin-card">
+        <div class="signin-head">
+            <ShopLogo Variant="ShopLogo.LogoVariant.Mark" Alt="@_shopName" />
+            <div>
+                <h1>@_shopName</h1>
+                <p class="muted small">WrenchDesk</p>
+            </div>
+        </div>
+
+        @if (!_anyAccounts)
+        {
+            <div class="alert alert-info">
+                <strong>Nobody has an account yet.</strong> Make the first one. It is the owner
+                account — it can do everything, including setting up everyone else.
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Setup))
+            {
+                <div class="alert alert-danger">@Setup</div>
+            }
+
+            <form method="post" action="/auth/first-run" class="signin-form">
+                <div class="field">
+                    <label for="fr-user">Sign-in name</label>
+                    <input id="fr-user" name="username" type="text" autocomplete="username"
+                           placeholder="walt" required autofocus />
+                </div>
+                <div class="field">
+                    <label for="fr-display">Name to show</label>
+                    <input id="fr-display" name="displayName" type="text" placeholder="Walt" />
+                </div>
+                <div class="field">
+                    <label for="fr-pass">Password</label>
+                    <input id="fr-pass" name="password" type="password" autocomplete="new-password" />
+                    <div class="muted small" style="margin-top:.2rem">
+                        Leave it empty to sign in by picking your name instead. You can change this
+                        later, and you can set up the rest of the shop without passwords too.
+                    </div>
+                </div>
+
+                <button class="btn btn-primary btn-lg" type="submit">Create this account</button>
+            </form>
+        }
+        else
+        {
+            @if (Bad is not null)
+            {
+                <div class="alert alert-danger">That name and password did not match an account.</div>
+            }
+
+            @if (_passwordless.Count > 0)
+            {
+                <p class="muted small" style="margin-bottom:.4rem">Tap your name:</p>
+                <div class="signin-people">
+                    @foreach (var person in _passwordless)
+                    {
+                        <form method="post" action="/auth/login">
+                            <input type="hidden" name="username" value="@person.Username" />
+                            <input type="hidden" name="from" value="@From" />
+                            <button class="btn btn-person" type="submit">@person.Name</button>
+                        </form>
+                    }
+                </div>
+
+                @if (_withPasswords.Count > 0)
+                {
+                    <div class="signin-or"><span>or sign in with a password</span></div>
+                }
+            }
+
+            @if (_withPasswords.Count > 0 || _passwordless.Count == 0)
+            {
+                <form method="post" action="/auth/login" class="signin-form">
+                    <input type="hidden" name="from" value="@From" />
+                    <div class="field">
+                        <label for="li-user">Name</label>
+                        <input id="li-user" name="username" type="text" autocomplete="username"
+                               required autofocus="@(_passwordless.Count == 0)" />
+                    </div>
+                    <div class="field">
+                        <label for="li-pass">Password</label>
+                        <input id="li-pass" name="password" type="password" autocomplete="current-password" />
+                    </div>
+
+                    <button class="btn btn-primary btn-lg" type="submit">Sign in</button>
+                </form>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "bad")] public string? Bad { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "setup")] public string? Setup { get; set; }
+
+    private bool _anyAccounts;
+    private List<User> _passwordless = new();
+    private List<User> _withPasswords = new();
+    private string _shopName = "WrenchDesk";
+
+    protected override void OnParametersSet()
+    {
+        _anyAccounts = Users.AnyExist();
+
+        var active = Users.Active();
+        _passwordless = active.Where(u => !u.HasPassword).ToList();
+        _withPasswords = active.Where(u => u.HasPassword).ToList();
+
+        var name = Settings.Get(SettingsStore.ShopName);
+        if (!string.IsNullOrWhiteSpace(name)) _shopName = name;
+    }
+}
