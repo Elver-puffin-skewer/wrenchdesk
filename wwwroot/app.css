@@ -959,7 +959,8 @@ label.check input { margin: 0; }
     white-space: nowrap;
 }
 
-.ticket-who .who-phone:hover { text-decoration: underline; }
+/* No hover underline: the number is text, and underlining it on hover promises a link that
+   is deliberately not there. The dial button beside it is the thing to press. */
 .ticket-who .who-phone.alt { font-size: 1rem; font-weight: 500; color: var(--ink-3); }
 
 @media print {
@@ -1104,3 +1105,41 @@ label.check input { margin: 0; }
 .history .when { color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 8.5rem; }
 .history .what { flex: 1; }
 .history .who { font-weight: 600; }
+/* ---- Notes about the customer ------------------------------------------ */
+/* Always present, empty or not: a box that only appears once it has something in it is a box
+   nobody knows exists, and the note ends up on a machine instead. */
+
+.notes-block {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line-2);
+}
+
+.notes-label {
+    display: block;
+    font-size: .74rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--ink-3);
+    font-weight: 650;
+    margin-bottom: .35rem;
+}
+
+.notes-block textarea { width: 100%; resize: vertical; min-height: 4.2rem; }
+.notes-hint { margin-top: .25rem; }
+.notes-hint .saved { color: var(--green, #1d6b32); font-weight: 600; }
+
+/* A machine's own notes, readable without opening the dialog to find them. */
+.machine-note {
+    margin-top: .25rem;
+    font-size: .82rem;
+    color: var(--ink-2, var(--ink-3));
+    white-space: pre-wrap;
+    border-left: 2px solid var(--line-2);
+    padding-left: .5rem;
+}
+
+.print-only { display: none; }
+@media print {
+    .print-only { display: block; }
+}
