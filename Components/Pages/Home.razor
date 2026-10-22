@@ -86,7 +86,11 @@
                         <div class="appt @KindClass(a.Kind) @(a.Status == "Done" ? "done" : a.Status == "Canceled" ? "canceled" : "")">
                             <div class="when">@(a.Start?.ToString("h:mm tt") ?? "—")</div>
                             <div class="body">
-                                <div class="who">@a.Kind — @a.CustomerName</div>
+                                @* Heading is what the schedule shows: a calendar entry's own
+                                   wording wins, because whoever typed it said what they meant.
+                                   Building a label here instead meant a stop written as
+                                   "William Burgess Delivery" in Google came out as "Other". *@
+                                <div class="who">@a.Heading</div>
                                 <div class="meta">
                                     @if (!string.IsNullOrWhiteSpace(a.Address)) { <span>@a.Address</span> }
                                     @if (!string.IsNullOrWhiteSpace(a.CustomerPhone)) { <span> · @a.CustomerPhone</span> }

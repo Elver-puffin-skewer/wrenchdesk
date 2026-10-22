@@ -67,8 +67,45 @@ public static class AppointmentEventMapper
     {
         if (string.IsNullOrWhiteSpace(summary)) return null;
 
+        // The shop's own convention first: "Delivery - Bill Moore". Highest confidence, because
+        // the word is where this app puts it.
         var head = summary.Split(TitleSeparator, 2, StringSplitOptions.TrimEntries)[0];
-        return Appointment.Kinds.FirstOrDefault(k => string.Equals(k, head, StringComparison.OrdinalIgnoreCase));
+        var byPrefix = Appointment.Kinds.FirstOrDefault(k => string.Equals(k, head, StringComparison.OrdinalIgnoreCase));
+        if (byPrefix is not null) return byPrefix;
+
+        // Nobody typing into a phone follows a convention. "William Burgess Delivery" is plainly
+        // a delivery, and reading it as Other put the wrong word on the board. Only taken when
+        // exactly one kind is in there - two would be a guess, and a stop filed under the wrong
+        // kind is worse than one left as Other for somebody to set.
+        var found = Appointment.Kinds
+            .Where(k => !string.Equals(k, "Other", StringComparison.OrdinalIgnoreCase))
+            .Where(k => ContainsWholeWord(summary, k))
+            .ToList();
+
+        return found.Count == 1 ? found[0] : null;
+    }
+
+    /// <summary>
+    /// Whether the word stands on its own in the text, so "Redelivery scheduled" is not read as
+    /// a delivery. Letters and digits either side end the match; anything else is a boundary.
+    /// </summary>
+    private static bool ContainsWholeWord(string haystack, string word)
+    {
+        var from = 0;
+
+        while (true)
+        {
+            var at = haystack.IndexOf(word, from, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return false;
+
+            var beforeOk = at == 0 || !char.IsLetterOrDigit(haystack[at - 1]);
+            var afterAt = at + word.Length;
+            var afterOk = afterAt >= haystack.Length || !char.IsLetterOrDigit(haystack[afterAt]);
+
+            if (beforeOk && afterOk) return true;
+
+            from = at + 1;
+        }
     }
 
     /// <summary>

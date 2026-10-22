@@ -87,13 +87,26 @@ else
                     </dd>
                 </dl>
 
-                @if (!string.IsNullOrWhiteSpace(_customer.Notes))
-                {
-                    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line-2)">
-                        <div class="label" style="font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:650;margin-bottom:.3rem">Notes</div>
-                        <div style="white-space:pre-wrap">@_customer.Notes</div>
+                @* Always here, empty or not. Hidden until it had something in it, nobody knew
+                   there was anywhere to put the gate code - so it went on a machine instead. *@
+                <div class="notes-block">
+                    <label class="notes-label" for="customer-notes">About this customer</label>
+                    <textarea id="customer-notes" rows="3" class="no-print"
+                              placeholder="Gate code, best time to call, dog in the yard, pays by check…"
+                              value="@_customer.Notes"
+                              @onchange="OnNotesChange"></textarea>
+                    <div class="print-only" style="white-space:pre-wrap">@_customer.Notes</div>
+                    <div class="muted small notes-hint">
+                        @if (_notesSaved)
+                        {
+                            <span class="saved">Saved</span>
+                        }
+                        else
+                        {
+                            <span>Anything about the person rather than one of their machines. Saves when you click away.</span>
+                        }
                     </div>
-                }
+                </div>
             </div>
         </div>
 
@@ -135,6 +148,11 @@ else
                                         @if (!string.IsNullOrWhiteSpace(e.EngineMake) || !string.IsNullOrWhiteSpace(e.EngineModel))
                                         {
                                             <div class="muted small">Engine: @($"{e.EngineMake} {e.EngineModel}".Trim())</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(e.Notes))
+                                        {
+                                            @* Worth reading without opening the dialog to find it. *@
+                                            <div class="machine-note">@e.Notes</div>
                                         }
                                     </td>
                                     <td class="mono small">@(string.IsNullOrWhiteSpace(e.Serial) ? "—" : e.Serial)</td>
@@ -476,6 +494,7 @@ else
     private readonly HashSet<long> _mergeSelected = new();
     private long? _keepId;
     private bool _confirmDelete;
+    private bool _notesSaved;
     private string? _mergeError;
     private bool _canDelete;
     private (int Tickets, int Equipment, int Payments, int Appointments) _mergeCounts;
@@ -506,6 +525,15 @@ else
         _appointments = Schedule.ForCustomer(Id);
 
         (_billedCents, _paidCents, _ticketCount) = Customers.LifetimeTotals(Id);
+    }
+
+    private void OnNotesChange(ChangeEventArgs e)
+    {
+        if (_customer is null) return;
+
+        _customer.Notes = e.Value?.ToString() ?? "";
+        Customers.Update(_customer);
+        _notesSaved = true;
     }
 
     private void OpenMerge()
