@@ -75,7 +75,13 @@
                     @foreach (var t in _rows)
                     {
                         <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/tickets/{t.Id}"))">
-                            <td class="strong mono">@t.Number</td>
+                            <td class="strong mono">
+                                @t.Number
+                                @if (t.IsCounterSale)
+                                {
+                                    <span class="counter-tag" title="Sold over the counter">counter</span>
+                                }
+                            </td>
                             <td class="tnum small">@FormatIso(t.IntakeOn)</td>
                             <td>@t.CustomerName</td>
                             <td class="small muted">

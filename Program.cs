@@ -67,6 +67,7 @@ builder.Services.AddScoped<MoneyRepo>();
 builder.Services.AddScoped<ScheduleRepo>();
 builder.Services.AddScoped<QuickItemRepo>();
 builder.Services.AddScoped<PhotoRepo>();
+builder.Services.AddScoped<CounterSaleRepo>();
 builder.Services.AddScoped<UserRepo>();
 builder.Services.AddScoped<AuditRepo>();
 builder.Services.AddScoped<CurrentUser>();

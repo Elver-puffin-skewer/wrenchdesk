@@ -246,6 +246,7 @@
                 <tr>
                     <th class="shrink">Order</th>
                     <th>Name</th>
+                    <th class="shrink">Barcode</th>
                     <th class="shrink">Type</th>
                     <th class="num" style="width:8rem">Last charged</th>
                     <th class="num" style="width:7rem">Fixed price</th>
@@ -264,6 +265,11 @@
                         </td>
                         <td>
                             <input type="text" value="@q.Name" @onchange="e => RenameQuick(q, e)" />
+                        </td>
+                        <td class="shrink">
+                            <input type="text" class="mono" style="width:9rem" placeholder="scan here"
+                                   title="Scan the barcode, or type the part number"
+                                   value="@q.Code" @onchange="e => RecodeQuick(q, e)" />
                         </td>
                         <td class="shrink">
                             <select value="@q.Kind" @onchange="e => RekindQuick(q, e)">
@@ -1318,6 +1324,17 @@
         if (string.IsNullOrWhiteSpace(name)) return;
 
         item.Name = name;
+        QuickItems.Update(item);
+        LoadQuickItems();
+    }
+
+    /// <summary>
+    /// The barcode for this item. Put the cursor here and scan it: a scanner is a keyboard, so
+    /// the code types itself in and the counter can find it afterwards.
+    /// </summary>
+    private void RecodeQuick(QuickItem item, ChangeEventArgs e)
+    {
+        item.Code = (e.Value?.ToString() ?? "").Trim();
         QuickItems.Update(item);
         LoadQuickItems();
     }

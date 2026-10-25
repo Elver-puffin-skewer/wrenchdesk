@@ -28,6 +28,33 @@ public class QuickItemRepo
             "SELECT * FROM quick_items ORDER BY is_active DESC, sort_order, id;").ToList();
     }
 
+    /// <summary>
+    /// Finds an item by the code a scanner typed, or failing that by name.
+    ///
+    /// A scanner is a keyboard: it types the code and presses enter. So the same box takes a
+    /// scan or somebody typing "air filter", and only answers when exactly one item fits -
+    /// ringing up the wrong part is worse than asking the person to pick.
+    /// </summary>
+    public QuickItem? FindForCounter(string? typed)
+    {
+        if (string.IsNullOrWhiteSpace(typed)) return null;
+        var term = typed.Trim();
+
+        using var conn = _db.Open();
+
+        var byCode = conn.QuerySingleOrDefault<QuickItem>(
+            "SELECT * FROM quick_items WHERE is_active = 1 AND TRIM(code) <> '' AND code = @term COLLATE NOCASE LIMIT 1;",
+            new { term });
+
+        if (byCode is not null) return byCode;
+
+        var byName = conn.Query<QuickItem>(
+            "SELECT * FROM quick_items WHERE is_active = 1 AND name LIKE @like ORDER BY sort_order, id LIMIT 2;",
+            new { like = "%" + term + "%" }).ToList();
+
+        return byName.Count == 1 ? byName[0] : null;
+    }
+
     public QuickItem? Get(long id)
     {
         using var conn = _db.Open();
@@ -42,8 +69,8 @@ public class QuickItemRepo
             item.SortOrder = (conn.ExecuteScalar<int?>("SELECT MAX(sort_order) FROM quick_items;") ?? 0) + 10;
 
         return conn.ExecuteScalar<long>("""
-            INSERT INTO quick_items (name, kind, default_cents, sort_order, is_active)
-            VALUES (@Name, @Kind, @DefaultCents, @SortOrder, @IsActive);
+            INSERT INTO quick_items (name, kind, default_cents, sort_order, is_active, code)
+            VALUES (@Name, @Kind, @DefaultCents, @SortOrder, @IsActive, @Code);
             SELECT last_insert_rowid();
             """, item);
     }
@@ -54,7 +81,7 @@ public class QuickItemRepo
         conn.Execute("""
             UPDATE quick_items SET
                 name = @Name, kind = @Kind, default_cents = @DefaultCents,
-                sort_order = @SortOrder, is_active = @IsActive
+                sort_order = @SortOrder, is_active = @IsActive, code = @Code
             WHERE id = @Id;
             """, item);
     }

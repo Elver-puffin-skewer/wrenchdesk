@@ -1,0 +1,324 @@
+@page "/counter"
+@inject QuickItemRepo QuickItems
+@inject CounterSaleRepo Sales
+@inject SettingsStore Settings
+@inject CurrentUser Me
+@inject AuditWriter Audit
+@inject NavigationManager Nav
+
+<PageTitle>Counter sale — WrenchDesk</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Counter sale</h1>
+        <p class="sub">Somebody buying something over the counter. No customer, no machine, no ticket to work.</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="btn-row no-print">
+        <a class="btn" href="/tickets?counter=1">Today's counter sales</a>
+    </div>
+</div>
+
+@if (_done is not null)
+{
+    <div class="alert alert-ok sale-done">
+        <div>
+            <strong>@Money.Fmt(_done.TotalCents) taken.</strong>
+            Rung up as @_done.Number.
+        </div>
+        <div class="spacer"></div>
+        <a class="btn btn-sm" href="@($"/tickets/{_done.TicketId}/print")" target="_blank">🖨 Receipt</a>
+        <a class="btn btn-sm" href="@($"/tickets/{_done.TicketId}")">Open it</a>
+    </div>
+}
+
+@if (_error is not null)
+{
+    <div class="alert alert-warn">@_error</div>
+}
+
+<div class="counter-grid">
+    <div>
+        <div class="card">
+            <div class="card-head">
+                <h2>What are they buying?</h2>
+            </div>
+            <div class="card-body">
+                <div class="field" style="margin-bottom:.9rem">
+                    <label for="scan">Scan a barcode, or type a part</label>
+                    <input id="scan" type="search" autofocus placeholder="Scan here, or type: air filter"
+                           value="@_scan"
+                           @onchange="OnScanChange" />
+                    <div class="muted small" style="margin-top:.2rem">
+                        A scanner types the code and presses enter, so this box takes either.
+                    </div>
+                </div>
+
+                @if (_items.Count == 0)
+                {
+                    <div class="empty">
+                        <div class="big">🏷</div>
+                        <div>No common items set up yet.</div>
+                        <div class="muted small">Add them under <a href="/settings">Settings</a> and they appear here.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="tile-grid">
+                        @foreach (var item in _items)
+                        {
+                            var q = item;
+                            <button class="tile" @onclick="() => AddItem(q)">
+                                <span class="tile-name">@q.Name</span>
+                                <span class="tile-price">@Money.Fmt(QuickItems.StartingPriceFor(q))</span>
+                            </button>
+                        }
+                    </div>
+                }
+
+                <div class="btn-row" style="margin-top:.9rem">
+                    <button class="btn btn-sm" @onclick="@(() => AddBlank("Part"))">+ Other part</button>
+                    <button class="btn btn-sm" @onclick="@(() => AddBlank("Labor"))">+ Labor</button>
+                    <button class="btn btn-sm" @onclick="@(() => AddBlank("Fee"))">+ Fee</button>
+                    <button class="btn btn-sm" @onclick="@(() => AddBlank("Discount"))">+ Discount</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card sale-card">
+            <div class="card-head">
+                <h2>This sale</h2>
+                <div class="spacer"></div>
+                @if (_lines.Count > 0)
+                {
+                    <button class="btn btn-ghost btn-sm" @onclick="ClearSale">Start over</button>
+                }
+            </div>
+
+            @if (_lines.Count == 0)
+            {
+                <div class="empty">
+                    <div class="big">🧾</div>
+                    <div>Nothing on the sale yet.</div>
+                    <div class="muted small">Tap an item, or scan one.</div>
+                </div>
+            }
+            else
+            {
+                <div class="card-body table-wrap">
+                    <table class="data sale-lines">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="num" style="width:4.5rem">Qty</th>
+                                <th class="num" style="width:6rem">Each</th>
+                                <th class="num" style="width:6rem">Total</th>
+                                <th class="shrink"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in _lines)
+                            {
+                                var l = line;
+                                <tr>
+                                    <td>
+                                        <input type="text" value="@l.Description" placeholder="What is it?"
+                                               @onchange="e => OnDescription(l, e)" />
+                                    </td>
+                                    <td>
+                                        <input type="text" class="tnum" style="text-align:right"
+                                               value="@l.Qty.ToString("0.###")"
+                                               @onchange="e => OnQty(l, e)" />
+                                    </td>
+                                    <td>
+                                        <input type="text" class="tnum" style="text-align:right"
+                                               value="@((l.UnitCents / 100m).ToString("0.00"))"
+                                               @onchange="e => OnUnit(l, e)" />
+                                    </td>
+                                    <td class="num strong">@Money.Fmt(l.TotalCents)</td>
+                                    <td class="shrink">
+                                        <button class="btn btn-ghost btn-sm" title="Take it off"
+                                                @onclick="() => _lines.Remove(l)">✕</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card-body" style="border-top:1px solid var(--line-2)">
+                    <div class="totals">
+                        @if (_taxRateBp > 0)
+                        {
+                            <div class="line"><span>Subtotal</span><span class="tnum">@Money.Fmt(Subtotal)</span></div>
+                            <div class="line">
+                                <span>Sales tax (@((_taxRateBp / 100m).ToString("0.##"))%)</span>
+                                <span class="tnum">@Money.Fmt(Tax)</span>
+                            </div>
+                        }
+                        <div class="line grand"><span>Total</span><span class="tnum">@Money.Fmt(Total)</span></div>
+                    </div>
+
+                    <div class="field" style="margin-top:.9rem">
+                        <label for="soldto">Name on the receipt <span class="muted">(optional)</span></label>
+                        <input id="soldto" type="text" placeholder="Leave empty for a plain counter sale"
+                               value="@_soldTo" @onchange="e => _soldTo = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+
+                    <div class="pay-row">
+                        @foreach (var method in Payment.Methods)
+                        {
+                            var m = method;
+                            <button class="btn btn-pay @(_method == m ? "picked" : "")"
+                                    @onclick="() => _method = m">@m</button>
+                        }
+                    </div>
+
+                    <button class="btn btn-primary btn-lg take-payment" @onclick="Ring">
+                        Take @Money.Fmt(Total) @_method.ToLowerInvariant()
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<QuickItem> _items = new();
+    private readonly List<CounterLine> _lines = new();
+    private string _scan = "";
+    private string _soldTo = "";
+    private string _method = "Cash";
+    private string? _error;
+    private CounterSaleResult? _done;
+    private int _taxRateBp;
+    private string _meName = "";
+
+    private long Subtotal => _lines.Sum(l => l.TotalCents);
+    private long Tax => (long)Math.Round(
+        _lines.Where(l => l.Taxable).Sum(l => l.TotalCents) * _taxRateBp / 10000m, MidpointRounding.AwayFromZero);
+    private long Total => Subtotal + Tax;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _meName = (await Me.GetAsync()).Name;
+        _items = QuickItems.Active();
+        _taxRateBp = Settings.GetBool(SettingsStore.TaxEnabled) ? Settings.GetInt(SettingsStore.TaxRateBp) : 0;
+    }
+
+    /// <summary>
+    /// A scan or a typed part. Only adds when exactly one item fits, because ringing up the
+    /// wrong part is worse than asking the person to tap it.
+    /// </summary>
+    private void OnScanChange(ChangeEventArgs e)
+    {
+        var typed = e.Value?.ToString() ?? "";
+        _scan = "";
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(typed)) return;
+
+        var match = QuickItems.FindForCounter(typed);
+        if (match is null)
+        {
+            _error = $"Nothing matched \"{typed.Trim()}\". Tap it below, or add it as another part.";
+            return;
+        }
+
+        AddItem(match);
+    }
+
+    private void AddItem(QuickItem item)
+    {
+        _error = null;
+        _done = null;
+
+        // Scanning the same thing twice means two of them, not two lines.
+        var already = _lines.FirstOrDefault(l =>
+            string.Equals(l.Description, item.Name, StringComparison.OrdinalIgnoreCase)
+            && l.Kind == item.Kind);
+
+        if (already is not null)
+        {
+            already.QtyMilli += 1000;
+            return;
+        }
+
+        _lines.Add(new CounterLine
+        {
+            Description = item.Name,
+            Kind = item.Kind,
+            UnitCents = QuickItems.StartingPriceFor(item),
+            Taxable = item.Kind != "Labor"
+        });
+    }
+
+    private void AddBlank(string kind)
+    {
+        _error = null;
+        _done = null;
+        _lines.Add(new CounterLine { Kind = kind, Taxable = kind != "Labor" });
+    }
+
+    private static void OnDescription(CounterLine line, ChangeEventArgs e) =>
+        line.Description = e.Value?.ToString() ?? "";
+
+    private void OnQty(CounterLine line, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var qty))
+        {
+            line.Qty = qty;
+        }
+    }
+
+    private void OnUnit(CounterLine line, ChangeEventArgs e)
+    {
+        if (Money.TryParse(e.Value?.ToString(), out var cents)) line.UnitCents = cents;
+    }
+
+    private void ClearSale()
+    {
+        _lines.Clear();
+        _soldTo = "";
+        _error = null;
+        _done = null;
+    }
+
+    /// <summary>
+    /// Takes the money. Nothing has been written until now, so a sale somebody walked away from
+    /// leaves no half-ticket behind.
+    /// </summary>
+    private async Task Ring()
+    {
+        _error = null;
+
+        if (_lines.Count == 0)
+        {
+            _error = "Nothing on the sale yet.";
+            return;
+        }
+
+        if (_lines.Any(l => string.IsNullOrWhiteSpace(l.Description)))
+        {
+            _error = "Every line needs a name, so the receipt says what they bought.";
+            return;
+        }
+
+        var result = Sales.Ring(_lines, _method, _soldTo, _meName);
+        if (result is null)
+        {
+            _error = "That sale came to nothing, so there was nothing to record.";
+            return;
+        }
+
+        await Audit.WriteAsync("Rang up a counter sale", AuditEntity.Payment, result.TicketId,
+            $"{Money.Fmt(result.TotalCents)} {_method} on {result.Number}");
+
+        _done = result;
+        _lines.Clear();
+        _soldTo = "";
+    }
+}

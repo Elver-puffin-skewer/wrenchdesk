@@ -24,6 +24,7 @@ public sealed class TestDb : IDisposable
     public PhotoRepo Photos { get; }
     public UserRepo Users { get; }
     public AuditRepo Audit { get; }
+    public CounterSaleRepo Counter { get; }
     public WrenchDesk.Services.Google.CalendarSyncService CalendarSync { get; }
 
     public TestDb()
@@ -48,6 +49,7 @@ public sealed class TestDb : IDisposable
         Photos = new PhotoRepo(Db, NullLogger<PhotoRepo>.Instance);
         Users = new UserRepo(Db);
         Audit = new AuditRepo(Db);
+        Counter = new CounterSaleRepo(Db, Tickets, Money, Settings);
         CalendarSync = new WrenchDesk.Services.Google.CalendarSyncService(
             Schedule, Customers, Settings, NullLogger<WrenchDesk.Services.Google.CalendarSyncService>.Instance);
     }

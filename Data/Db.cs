@@ -522,6 +522,24 @@ public class Db
         ALTER TABLE tickets  ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
         ALTER TABLE tickets  ADD COLUMN updated_by TEXT NOT NULL DEFAULT '';
         ALTER TABLE payments ADD COLUMN taken_by   TEXT NOT NULL DEFAULT '';
+        """,
+
+        // 8 -> 9: selling something over the counter
+        """
+        -- A counter sale is a ticket that took the short way round, not a second kind of record.
+        -- Same lines, same totals, same payments, same money reporting - so when stock tracking
+        -- arrives there is one place a part leaves the shelf, whether it went out on a repair or
+        -- across the counter. The flag is only so reports can tell counter trade from repair work.
+        ALTER TABLE tickets ADD COLUMN is_counter_sale INTEGER NOT NULL DEFAULT 0;
+
+        -- Who bought it, when somebody says. Not a customer record - just a name on the receipt,
+        -- so a walk-in does not have to become a contact to buy an air filter.
+        ALTER TABLE tickets ADD COLUMN counter_name TEXT NOT NULL DEFAULT '';
+
+        -- What a barcode scanner types. A scanner is a keyboard: it types the code and presses
+        -- enter, so nothing has to talk to the hardware - the code just has to be findable.
+        ALTER TABLE quick_items ADD COLUMN code TEXT NOT NULL DEFAULT '';
+        CREATE INDEX ix_quick_code ON quick_items(code);
         """
     };
 }

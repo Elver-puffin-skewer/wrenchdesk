@@ -118,6 +118,15 @@ public class Ticket
     /// <summary>Tax rate in basis points: 725 == 7.25%. Snapshotted per ticket so old records keep their rate.</summary>
     public int TaxRateBp { get; set; }
 
+    /// <summary>
+    /// Sold over the counter rather than worked on. Still a ticket in every other respect, so it
+    /// prices, takes payment and reports exactly like one.
+    /// </summary>
+    public bool IsCounterSale { get; set; }
+
+    /// <summary>Who bought it, when they said. A name on the receipt, not a customer record.</summary>
+    public string CounterName { get; set; } = "";
+
     /// <summary>Who wrote this ticket up, by name. Blank on anything from before accounts existed.</summary>
     public string CreatedBy { get; set; } = "";
 
@@ -432,6 +441,9 @@ public class QuickItem
 {
     public long Id { get; set; }
     public string Name { get; set; } = "";
+
+    /// <summary>The barcode or part number a scanner types. Empty until somebody fills it in.</summary>
+    public string Code { get; set; } = "";
     public string Kind { get; set; } = "Part";
 
     /// <summary>Price to start the line at. Zero means "look up what it went out at last time".</summary>
@@ -454,6 +466,9 @@ public class TicketRow
     /// <summary>Who wrote the ticket up, and who last changed it. Blank on anything from before accounts.</summary>
     public string CreatedBy { get; set; } = "";
     public string UpdatedBy { get; set; } = "";
+
+    /// <summary>Sold over the counter rather than worked on, for telling the two apart in a list.</summary>
+    public bool IsCounterSale { get; set; }
     public long CustomerId { get; set; }
     public string CustomerName { get; set; } = "";
     public long? EquipmentId { get; set; }

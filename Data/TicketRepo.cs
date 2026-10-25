@@ -25,7 +25,7 @@ public class TicketRepo
     // pressure washer reads as one row in the list rather than hiding the second machine.
     private const string RowSelect = """
         SELECT tk.id, tk.number, tk.status, tk.intake_on, tk.promised_on,
-               tk.created_by, tk.updated_by,
+               tk.created_by, tk.updated_by, tk.is_counter_sale,
                tk.customer_id,
                TRIM(COALESCE(NULLIF(c.business_name, ''),
                              TRIM(c.first_name || ' ' || c.last_name))) AS customer_name,
@@ -177,11 +177,11 @@ public class TicketRepo
             INSERT INTO tickets
                 (number, customer_id, status, notes,
                  tax_rate_bp, intake_on, promised_on, completed_on, closed_on, created_utc, updated_utc,
-                 created_by, updated_by)
+                 created_by, updated_by, is_counter_sale, counter_name)
             VALUES
                 (@Number, @CustomerId, @Status, @Notes,
                  @TaxRateBp, @IntakeOn, @PromisedOn, @CompletedOn, @ClosedOn, @CreatedUtc, @UpdatedUtc,
-                 @CreatedBy, @UpdatedBy);
+                 @CreatedBy, @UpdatedBy, @IsCounterSale, @CounterName);
             SELECT last_insert_rowid();
             """, t, tx);
 

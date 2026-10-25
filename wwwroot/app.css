@@ -1143,3 +1143,71 @@ label.check input { margin: 0; }
 @media print {
     .print-only { display: block; }
 }
+
+/* ---- The counter ------------------------------------------------------- */
+/* Built for somebody standing at a counter with a person waiting: big targets, the running
+   total always in sight, and the payment button saying the amount out loud. */
+
+.counter-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .counter-grid { grid-template-columns: 1fr; }
+}
+
+.tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    gap: .5rem;
+}
+
+.tile {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    align-items: flex-start;
+    padding: .7rem .8rem;
+    min-height: 3.6rem;
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    background: var(--card);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+}
+
+.tile:hover { border-color: var(--navy); background: var(--cream); }
+.tile-name { font-weight: 600; font-size: .9rem; line-height: 1.2; }
+.tile-price { font-size: .8rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.sale-card { position: sticky; top: 1rem; }
+.sale-lines input { width: 100%; }
+
+.pay-row { display: flex; flex-wrap: wrap; gap: .4rem; margin: .9rem 0 .6rem; }
+
+.btn-pay { padding: .55rem 1rem; font-weight: 600; }
+.btn-pay.picked { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+.take-payment { width: 100%; margin-top: .2rem; }
+
+.sale-done { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+
+.counter-tag {
+    display: inline-block;
+    margin-left: .4rem;
+    padding: .05rem .4rem;
+    border-radius: 999px;
+    font-family: var(--body, inherit);
+    font-size: .64rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    font-weight: 700;
+    background: var(--cream);
+    border: 1px solid var(--line-2);
+    color: var(--ink-3);
+}
